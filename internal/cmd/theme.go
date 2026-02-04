@@ -8,10 +8,10 @@ import (
 
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/session"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 var (

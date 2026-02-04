@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/steveyegge/gastown/internal/cli"
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 type wispCreateJSON struct {
@@ -230,7 +230,7 @@ func runSlingFormula(args []string) error {
 	attachedMoleculeID := wispRootID
 
 	// Step 3: Hook the wisp bead using bd update.
-	// See: https://github.com/steveyegge/gastown/issues/148
+	// See: https://github.com/sfncore/sf-gastown/issues/148
 	hookCmd := exec.Command("bd", "--no-daemon", "update", wispRootID, "--status=hooked", "--assignee="+targetAgent)
 	hookCmd.Dir = beads.ResolveHookDir(townRoot, wispRootID, "")
 	hookCmd.Stderr = os.Stderr

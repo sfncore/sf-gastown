@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/tmux"
 )
 
 // ZombieSessionCheck detects tmux sessions that are valid Gas Town sessions

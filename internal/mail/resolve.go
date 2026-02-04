@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/config"
 )
 
 // RecipientType indicates the type of resolved recipient.

@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/convoy"
-	"github.com/steveyegge/gastown/internal/crew"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/protocol"
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/convoy"
+	"github.com/sfncore/sf-gastown/internal/crew"
+	"github.com/sfncore/sf-gastown/internal/git"
+	"github.com/sfncore/sf-gastown/internal/mail"
+	"github.com/sfncore/sf-gastown/internal/protocol"
+	"github.com/sfncore/sf-gastown/internal/rig"
 )
 
 // MergeQueueConfig holds configuration for the merge queue processor.

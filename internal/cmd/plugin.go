@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/plugin"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/sfncore/sf-gastown/internal/plugin"
+	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 // Plugin command flags

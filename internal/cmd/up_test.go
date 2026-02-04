@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/rig"
 )
 
 func TestAgentStartResult_Fields(t *testing.T) {

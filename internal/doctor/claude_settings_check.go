@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/runtime"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/templates"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/runtime"
+	"github.com/sfncore/sf-gastown/internal/session"
+	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/templates"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 // gitFileStatus represents the git status of a file.

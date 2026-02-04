@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/events"
 )
 
 func TestCurator_FiltersByVisibility(t *testing.T) {

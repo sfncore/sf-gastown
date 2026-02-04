@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/convoy"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/convoy"
+	"github.com/sfncore/sf-gastown/internal/git"
+	"github.com/sfncore/sf-gastown/internal/mail"
+	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/session"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/util"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 // HandlerResult tracks the result of handling a protocol message.

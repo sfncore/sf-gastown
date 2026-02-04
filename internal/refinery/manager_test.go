@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/rig"
 )
 
 func setupTestManager(t *testing.T) (*Manager, string) {

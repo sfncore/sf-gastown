@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/tmux"
 )
 
 // TownSession represents a town-level tmux session.

@@ -1,17 +1,17 @@
 package cmd
 
 import (
-	"github.com/steveyegge/gastown/internal/cli"
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/deacon"
-	"github.com/steveyegge/gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/sfncore/sf-gastown/internal/deacon"
+	"github.com/sfncore/sf-gastown/internal/style"
 )
 
 // MoleculeCurrentOutput represents the JSON output of bd mol current.

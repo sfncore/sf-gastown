@@ -10,7 +10,7 @@ import (
 	"sync"
 	"text/template"
 
-	"github.com/steveyegge/gastown/internal/templates/commands"
+	"github.com/sfncore/sf-gastown/internal/templates/commands"
 )
 
 var (

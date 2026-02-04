@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/beads"
 )
 
 // EventSource represents a source of events

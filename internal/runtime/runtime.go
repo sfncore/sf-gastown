@@ -2,16 +2,16 @@
 package runtime
 
 import (
-	"github.com/steveyegge/gastown/internal/cli"
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/claude"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/opencode"
-	"github.com/steveyegge/gastown/internal/templates/commands"
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/claude"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/opencode"
+	"github.com/sfncore/sf-gastown/internal/templates/commands"
+	"github.com/sfncore/sf-gastown/internal/tmux"
 )
 
 // EnsureSettingsForRole provisions all agent-specific configuration for a role.

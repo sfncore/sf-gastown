@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/beads"
 )
 
 // bdError represents an error from running a bd command.

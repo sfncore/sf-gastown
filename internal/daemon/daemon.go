@@ -16,21 +16,21 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/boot"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/deacon"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/feed"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/session"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/util"
-	"github.com/steveyegge/gastown/internal/wisp"
-	"github.com/steveyegge/gastown/internal/witness"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/boot"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/sfncore/sf-gastown/internal/deacon"
+	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/feed"
+	"github.com/sfncore/sf-gastown/internal/polecat"
+	"github.com/sfncore/sf-gastown/internal/refinery"
+	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/session"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/util"
+	"github.com/sfncore/sf-gastown/internal/wisp"
+	"github.com/sfncore/sf-gastown/internal/witness"
 )
 
 // Daemon is the town-level background service.
@@ -55,7 +55,7 @@ type Daemon struct {
 
 	// Deacon startup tracking: prevents race condition where newly started
 	// sessions are immediately killed by the heartbeat check.
-	// See: https://github.com/steveyegge/gastown/issues/567
+	// See: https://github.com/sfncore/sf-gastown/issues/567
 	// Note: Only accessed from heartbeat loop goroutine - no sync needed.
 	deaconLastStarted time.Time
 }
@@ -450,7 +450,7 @@ func (d *Daemon) checkDeaconHeartbeat() {
 	// Grace period: don't check heartbeat for newly started sessions.
 	// This prevents the race condition where we start a Deacon, then immediately
 	// see a stale heartbeat (from before the crash) and kill the session we just started.
-	// See: https://github.com/steveyegge/gastown/issues/567
+	// See: https://github.com/sfncore/sf-gastown/issues/567
 	if !d.deaconLastStarted.IsZero() && time.Since(d.deaconLastStarted) < deaconGracePeriod {
 		d.logger.Printf("Deacon started recently (%s ago), skipping heartbeat check",
 			time.Since(d.deaconLastStarted).Round(time.Second))

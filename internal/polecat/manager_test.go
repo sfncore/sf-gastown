@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/git"
+	"github.com/sfncore/sf-gastown/internal/rig"
 )
 
 func TestStateIsActive(t *testing.T) {

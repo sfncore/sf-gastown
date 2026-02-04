@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/runtime"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/runtime"
 )
 
 // timeNow is a function that returns the current time. It can be overridden in tests.

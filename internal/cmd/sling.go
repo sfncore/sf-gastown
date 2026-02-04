@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/events"
-	"github.com/steveyegge/gastown/internal/mail"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/sfncore/sf-gastown/internal/mail"
+	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 var slingCmd = &cobra.Command{
@@ -486,7 +486,7 @@ func runSling(cmd *cobra.Command, args []string) error {
 	// Hook the bead using bd update with retry logic.
 	// Dolt can fail with concurrency errors (HTTP 400) when multiple agents write simultaneously.
 	// We retry with exponential backoff and verify the hook actually stuck.
-	// See: https://github.com/steveyegge/gastown/issues/148
+	// See: https://github.com/sfncore/sf-gastown/issues/148
 	hookDir := beads.ResolveHookDir(townRoot, beadID, hookWorkDir)
 	const maxRetries = 3
 	skipVerify := os.Getenv("GT_TEST_SKIP_HOOK_VERIFY") != "" // For tests with stub bd

@@ -50,7 +50,7 @@ func buildGT(t *testing.T) string {
 		binaryName += ".exe"
 	}
 	tmpBinary := filepath.Join(tmpDir, binaryName)
-	ldFlags := "-X github.com/steveyegge/gastown/internal/cmd.BuiltProperly=1"
+	ldFlags := "-X github.com/sfncore/sf-gastown/internal/cmd.BuiltProperly=1"
 	cmd := exec.Command("go", "build", "-ldflags", ldFlags, "-o", tmpBinary, "./cmd/gt")
 	cmd.Dir = projectRoot
 	if output, err := cmd.CombinedOutput(); err != nil {

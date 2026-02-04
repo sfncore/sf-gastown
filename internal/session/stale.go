@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/tmux"
 )
 
 // SessionCreatedAt returns the time a tmux session was created.
