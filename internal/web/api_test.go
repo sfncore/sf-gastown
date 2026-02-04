@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -506,5 +507,24 @@ func TestAPIHandler_IssueCreate_InvalidJSON(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("POST /api/issues/create invalid JSON status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+// TestNewAPIHandler_UsesGtFromPathInTests verifies that when running as a test
+// binary, NewAPIHandler uses "gt" from PATH instead of the test binary itself.
+// This prevents infinite recursion where the test binary would call itself.
+func TestNewAPIHandler_UsesGtFromPathInTests(t *testing.T) {
+	handler := NewAPIHandler()
+
+	// When running as a test binary (web.test), the handler should use "gt"
+	// from PATH, not the test binary path
+	if handler.gtPath == "" {
+		t.Error("NewAPIHandler() gtPath should not be empty")
+	}
+
+	// The gtPath should be "gt" (from PATH) when running as a test binary,
+	// not a path containing ".test"
+	if strings.Contains(handler.gtPath, ".test") {
+		t.Errorf("NewAPIHandler() gtPath should not be a test binary when running tests, got: %s", handler.gtPath)
 	}
 }
