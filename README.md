@@ -314,6 +314,281 @@ Gas Town supports multiple AI coding runtimes. Per-rig runtime settings are in `
   after the session is ready: `gt prime`, optional `gt mail check --inject`
   for autonomous roles, and `gt nudge deacon session-started`.
 
+## OpenCode Setup
+
+[OpenCode](https://opencode.ai) is a cost-effective AI coding assistant that works seamlessly with Gas Town. This section covers complete setup from installation to configuration.
+
+### Prerequisites
+
+- **Node.js 18+** - [nodejs.org](https://nodejs.org/) (LTS recommended)
+- **npm** - Usually bundled with Node.js
+- **OpenCode CLI** - Install globally:
+
+```bash
+npm install -g @opencode-ai/opencode
+```
+
+Verify installation:
+```bash
+opencode --version
+```
+
+### Environment Setup
+
+OpenCode requires permission configuration for autonomous operation. Set this environment variable in your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`):
+
+```bash
+export OPENCODE_PERMISSION='{"*":"allow"}'
+```
+
+This grants OpenCode the necessary permissions to execute commands and modify files. For more restrictive permissions, see the [OpenCode documentation](https://opencode.ai).
+
+Apply the changes:
+```bash
+source ~/.bashrc  # or ~/.zshrc, etc.
+```
+
+### Step-by-Step Configuration
+
+#### 1. Configure OpenCode as Default Agent (Town-Level)
+
+Set OpenCode as your default agent for all rigs:
+
+```bash
+# Set default agent to opencode
+gt config default-agent opencode
+
+# Verify the change
+gt config show
+```
+
+#### 2. Configure Per-Rig Agent Settings
+
+To use OpenCode for a specific rig only:
+
+```bash
+# Navigate to your rig
+cd ~/gt/my-rig
+
+# Set agent for this rig
+gt config agent set opencode
+
+# Or set a custom OpenCode configuration
+gt config agent set opencode-fast "opencode --model gpt-4o-mini"
+```
+
+#### 3. Advanced Agent Configuration
+
+For fine-grained control, edit `settings/agents.json` in your town or rig directory:
+
+**Town-level agents** (`~/gt/settings/agents.json`):
+```json
+{
+  "version": 1,
+  "agents": {
+    "opencode": {
+      "command": "opencode",
+      "args": [],
+      "resume_flag": "--session",
+      "resume_style": "flag",
+      "non_interactive": {
+        "subcommand": "run",
+        "output_flag": "--format json"
+      }
+    }
+  }
+}
+```
+
+**Rig-level agents** (`~/gt/my-rig/settings/config.json`):
+```json
+{
+  "type": "rig-settings",
+  "version": 1,
+  "agent": "opencode",
+  "agents": {
+    "opencode": {
+      "command": "opencode",
+      "args": ["--session"]
+    }
+  }
+}
+```
+
+### Configuration Examples
+
+#### Pure OpenCode Setup
+
+Use OpenCode for all agents (most cost-effective):
+
+```bash
+# Set as default
+gt config default-agent opencode
+
+# Verify
+gt config agent list
+```
+
+#### Mixed Claude + OpenCode Setup
+
+Use Claude for the Mayor (complex coordination) and OpenCode for workers:
+
+```bash
+# Keep Claude as default
+gt config default-agent claude
+
+# Set OpenCode for specific rig
+cd ~/gt/my-rig
+gt config agent set opencode
+```
+
+**Rig configuration** (`~/gt/my-rig/settings/config.json`):
+```json
+{
+  "type": "rig-settings",
+  "version": 1,
+  "agent": "opencode"
+}
+```
+
+#### Cost-Optimized Per-Role Configuration
+
+Configure different models for different roles based on task complexity:
+
+**Town-level** (`~/gt/settings/agents.json`):
+```json
+{
+  "version": 1,
+  "agents": {
+    "claude": {
+      "command": "claude",
+      "args": []
+    },
+    "opencode": {
+      "command": "opencode",
+      "args": []
+    },
+    "opencode-mini": {
+      "command": "opencode",
+      "args": ["--model", "gpt-4o-mini"]
+    }
+  }
+}
+```
+
+**Usage**:
+```bash
+# Mayor uses Claude (complex coordination)
+gt mayor attach
+
+# Workers use OpenCode (cost-effective)
+gt sling gt-abc12 myproject --agent opencode
+
+# Quick tasks use mini model
+gt sling gt-def34 myproject --agent opencode-mini
+```
+
+### Per-Role Agent Configuration
+
+Gas Town supports different agents for different roles:
+
+| Role | Typical Agent | Reason |
+|------|--------------|--------|
+| **Mayor** | Claude | Complex coordination, context management |
+| **Crew** | User's choice | Personal preference |
+| **Polecats** | OpenCode | Cost-effective for focused tasks |
+| **Witness** | OpenCode | Monitoring doesn't need advanced reasoning |
+| **Refinery** | OpenCode | Automated merging is straightforward |
+
+Configure per-role agents in your rig's `settings/config.json`:
+
+```json
+{
+  "type": "rig-settings",
+  "version": 1,
+  "roles": {
+    "mayor": {
+      "agent": "claude"
+    },
+    "polecat": {
+      "agent": "opencode"
+    },
+    "witness": {
+      "agent": "opencode"
+    }
+  }
+}
+```
+
+### Verification
+
+Verify your OpenCode setup:
+
+```bash
+# Check agent configuration
+gt config agent list
+
+# Run system health check
+gt doctor
+
+# Test with a simple command
+gt agents
+```
+
+Expected output for `gt doctor`:
+```
+✓ OpenCode CLI found: /usr/local/bin/opencode
+✓ OPENCODE_PERMISSION environment variable set
+✓ Agent configuration valid
+✓ All systems operational
+```
+
+### Troubleshooting
+
+#### OpenCode command not found
+
+```bash
+# Verify npm global install location is in PATH
+npm config get prefix
+export PATH="$PATH:$(npm config get prefix)/bin"
+
+# Or reinstall
+gt config agent set opencode "npx @opencode-ai/opencode"
+```
+
+#### Permission denied errors
+
+```bash
+# Check environment variable is set
+echo $OPENCODE_PERMISSION
+
+# Should output: {"*":"allow"}
+# If empty, add to shell profile and reload
+```
+
+#### Agent not switching to OpenCode
+
+```bash
+# Clear any cached configuration
+gt config reload
+
+# Verify with
+gt config show
+
+# Check which agent is being used
+gt config agent list
+```
+
+#### OpenCode not resuming sessions
+
+Ensure `resume_flag` and `resume_style` are configured in `agents.json`:
+```json
+{
+  "resume_flag": "--session",
+  "resume_style": "flag"
+}
+```
+
 ## Key Commands
 
 ### Workspace Management
