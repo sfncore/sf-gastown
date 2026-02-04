@@ -1,0 +1,18 @@
+{
+  "_comment": "Town-wide default settings - applies to all rigs",
+  "type": "town-settings",
+  "version": 1,
+  "theme": "desert",
+  "max_workers": 5,
+  "agents": {
+    "claude": {
+      "command": "claude",
+      "args": ["--dangerously-skip-permissions"]
+    },
+    "opencode": {
+      "command": "opencode",
+      "args": []
+    }
+  },
+  "default_agent": "claude"
+}

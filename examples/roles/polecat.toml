@@ -1,0 +1,41 @@
+# Polecat Role Configuration
+# 
+# Polecats are ephemeral worker agents that process tasks from the merge queue.
+# Multiple polecats can run concurrently per rig.
+
+role = "polecat"
+scope = "rig"
+nudge = "Check your hook for work assignments."
+prompt_template = "polecat.md.tmpl"
+
+[session]
+# Session name pattern: gt-{rig}-{name} (e.g., gt-gastown-alpha)
+pattern = "gt-{rig}-{name}"
+
+# Working directory for this polecat
+# {town} = ~/gt, {rig} = rig name, {name} = polecat name
+work_dir = "{town}/{rig}/polecats/{name}"
+
+# Whether to sync repo before starting
+needs_pre_sync = true
+
+# Command to start the agent
+start_command = "exec claude --dangerously-skip-permissions"
+
+[env]
+# Environment variables set for this role
+GT_ROLE = "polecat"
+GT_SCOPE = "rig"
+
+[health]
+# How long to wait for ping response
+ping_timeout = "30s"
+
+# Number of consecutive failures before considering unhealthy
+consecutive_failures = 3
+
+# Cooldown between kill attempts
+kill_cooldown = "5m"
+
+# Threshold for considering a polecat "stuck"
+stuck_threshold = "2h"

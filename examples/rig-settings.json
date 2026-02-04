@@ -1,0 +1,37 @@
+{
+  "_comment": "Rig behavioral settings - customize agent behavior and preferences",
+  "type": "rig-settings",
+  "version": 1,
+  "agent": "claude",
+  "agents": {
+    "claude": {
+      "command": "claude",
+      "args": ["--dangerously-skip-permissions"]
+    },
+    "opencode": {
+      "command": "opencode",
+      "args": [],
+      "resume_flag": "--session",
+      "resume_style": "flag",
+      "non_interactive": {
+        "subcommand": "run",
+        "output_flag": "--format json"
+      }
+    },
+    "gemini": {
+      "command": "gemini",
+      "args": []
+    }
+  },
+  "theme": "desert",
+  "max_workers": 5,
+  "merge_queue": {
+    "enabled": true,
+    "test_command": "make test",
+    "auto_merge": false
+  },
+  "polecat_branch_template": "{user}/{year}/{month}/{description}",
+  "crew": {
+    "startup": []
+  }
+}

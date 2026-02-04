@@ -1,0 +1,12 @@
+{
+  "_comment": "Wisp layer configuration - transient local overrides (not synced)",
+  "rig": "myproject",
+  "values": {
+    "status": "parked",
+    "priority_adjustment": 10,
+    "max_polecats": 8
+  },
+  "blocked": [
+    "auto_restart"
+  ]
+}

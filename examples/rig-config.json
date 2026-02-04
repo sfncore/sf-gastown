@@ -1,0 +1,9 @@
+{
+  "_comment": "Rig identity configuration - created by 'gt rig add'",
+  "type": "rig",
+  "name": "myproject",
+  "git_url": "https://github.com/username/myproject.git",
+  "beads": {
+    "prefix": "mp"
+  }
+}

@@ -1,0 +1,32 @@
+# Mayor Role Configuration
+#
+# The Mayor is the town-level coordinator responsible for cross-rig work
+# dispatch and overall town management. One mayor per town.
+
+role = "mayor"
+scope = "town"
+nudge = "Check mail and hook status, then act accordingly."
+prompt_template = "mayor.md.tmpl"
+
+[session]
+# Session name is fixed for the mayor
+pattern = "hq-mayor"
+
+# Mayor works at town root
+work_dir = "{town}"
+
+# Mayor doesn't need repo sync (works across rigs)
+needs_pre_sync = false
+
+# Command to start the agent
+start_command = "exec claude --dangerously-skip-permissions"
+
+[env]
+GT_ROLE = "mayor"
+GT_SCOPE = "town"
+
+[health]
+ping_timeout = "30s"
+consecutive_failures = 3
+kill_cooldown = "5m"
+stuck_threshold = "1h"
