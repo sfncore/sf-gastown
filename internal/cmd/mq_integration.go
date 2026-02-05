@@ -679,8 +679,12 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Query children of the epic to determine if ready to land
+	// Use status "all" to include both open and closed children
+	// Use Priority -1 to disable priority filtering
 	children, err := bd.List(beads.ListOptions{
-		Parent: epicID,
+		Parent:   epicID,
+		Status:   "all",
+		Priority: -1,
 	})
 	childrenTotal := 0
 	childrenClosed := 0
