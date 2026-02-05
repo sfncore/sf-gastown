@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 4
+version = 5
 
 [vars]
 wisp_type = "patrol"
@@ -369,9 +369,48 @@ conflict, it may indicate main is moving too fast or branches are too stale.
 This becomes the digest when the patrol is squashed."""
 
 [[steps]]
+id = "check-integration-branches"
+title = "Check integration branches for landing"
+needs = ["generate-summary"]
+description = """
+Check if any integration branches are ready to land.
+
+**When to check**: After the normal MQ is empty (no more polecat branches to merge).
+
+**Step 1: Find epics with integration branches**
+```bash
+bd list --type=epic --status=open
+```
+
+For each epic, check its status:
+```bash
+gt mq integration status <epic-id>
+```
+
+**Step 2: Evaluate status output**
+
+The status shows:
+- `auto_land_enabled`: from rig's `integration_branch_auto_land` setting
+- `ready_to_land`: true when ALL conditions met (commits ahead, all children closed, no pending MRs)
+
+**Step 3: Decision**
+
+If `auto_land_enabled: false`: Skip. Integration branches must be landed manually.
+
+If `auto_land_enabled: true` AND `ready_to_land: true`:
+```bash
+gt mq integration land <epic-id>
+```
+
+If `ready_to_land: false`: Do nothing, epic work is not yet complete.
+
+**CRITICAL**: Only land when ALL children are closed. Do NOT land just because
+the MQ is empty — there may be more waves of work to sling for this epic."""
+
+[[steps]]
 id = "context-check"
 title = "Check own context limit"
-needs = ["generate-summary"]
+needs = ["check-integration-branches"]
 description = """
 Check own context usage.
 

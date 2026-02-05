@@ -703,6 +703,11 @@ type MergeQueueConfig struct {
 	// Default: "integration/{epic}"
 	IntegrationBranchTemplate string `json:"integration_branch_template,omitempty"`
 
+	// IntegrationBranchAutoLand controls whether the refinery should automatically
+	// land integration branches when all children of the epic are closed.
+	// Nil defaults to false (manual landing required).
+	IntegrationBranchAutoLand *bool `json:"integration_branch_auto_land,omitempty"`
+
 	// OnConflict specifies conflict resolution strategy: "assign_back" or "auto_rebase".
 	OnConflict string `json:"on_conflict"`
 
@@ -747,6 +752,16 @@ func (c *MergeQueueConfig) IsRefineryIntegrationEnabled() bool {
 		return true
 	}
 	return *c.IntegrationBranchRefineryEnabled
+}
+
+// IsIntegrationBranchAutoLandEnabled returns whether the refinery should
+// auto-land integration branches when all epic children are closed.
+// Nil-safe, defaults to false (manual landing required).
+func (c *MergeQueueConfig) IsIntegrationBranchAutoLandEnabled() bool {
+	if c.IntegrationBranchAutoLand == nil {
+		return false
+	}
+	return *c.IntegrationBranchAutoLand
 }
 
 // boolPtr returns a pointer to a bool value.

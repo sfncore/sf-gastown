@@ -145,12 +145,16 @@ func getIntegrationBranchTemplate(rigPath, cliOverride string) string {
 
 // IntegrationStatusOutput is the JSON output structure for integration status.
 type IntegrationStatusOutput struct {
-	Epic        string                       `json:"epic"`
-	Branch      string                       `json:"branch"`
-	Created     string                       `json:"created,omitempty"`
-	AheadOfMain int                          `json:"ahead_of_main"`
-	MergedMRs   []IntegrationStatusMRSummary `json:"merged_mrs"`
-	PendingMRs  []IntegrationStatusMRSummary `json:"pending_mrs"`
+	Epic            string                       `json:"epic"`
+	Branch          string                       `json:"branch"`
+	Created         string                       `json:"created,omitempty"`
+	AheadOfMain     int                          `json:"ahead_of_main"`
+	MergedMRs       []IntegrationStatusMRSummary `json:"merged_mrs"`
+	PendingMRs      []IntegrationStatusMRSummary `json:"pending_mrs"`
+	ReadyToLand     bool                         `json:"ready_to_land"`
+	AutoLandEnabled bool                         `json:"auto_land_enabled"`
+	ChildrenTotal   int                          `json:"children_total"`
+	ChildrenClosed  int                          `json:"children_closed"`
 }
 
 // IntegrationStatusMRSummary represents a merge request in the integration status output.
@@ -666,14 +670,51 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Check if auto-land is enabled in settings
+	settingsPath := filepath.Join(r.Path, "settings", "config.json")
+	settings, _ := config.LoadRigSettings(settingsPath) // Ignore error, use defaults
+	autoLandEnabled := false
+	if settings != nil && settings.MergeQueue != nil {
+		autoLandEnabled = settings.MergeQueue.IsIntegrationBranchAutoLandEnabled()
+	}
+
+	// Query children of the epic to determine if ready to land
+	children, err := bd.List(beads.ListOptions{
+		Parent: epicID,
+	})
+	childrenTotal := 0
+	childrenClosed := 0
+	if err == nil {
+		for _, child := range children {
+			childrenTotal++
+			if child.Status == "closed" {
+				childrenClosed++
+			}
+		}
+	}
+
+	// Ready to land if:
+	// 1. Has commits ahead of main (there's work to land)
+	// 2. Has children (not an empty epic)
+	// 3. All children are closed
+	// 4. No pending MRs (all submitted work is merged)
+	readyToLand := aheadCount > 0 &&
+		childrenTotal > 0 &&
+		childrenTotal == childrenClosed &&
+		len(pendingMRs) == 0
+
 	// Build output structure
 	output := IntegrationStatusOutput{
-		Epic:        epicID,
-		Branch:      branchName,
-		Created:     createdDate,
-		AheadOfMain: aheadCount,
-		MergedMRs:   make([]IntegrationStatusMRSummary, 0, len(mergedMRs)),
-		PendingMRs:  make([]IntegrationStatusMRSummary, 0, len(pendingMRs)),
+		Epic:            epicID,
+		Branch:          branchName,
+		Created:         createdDate,
+		AheadOfMain:     aheadCount,
+		MergedMRs:       make([]IntegrationStatusMRSummary, 0, len(mergedMRs)),
+		PendingMRs:      make([]IntegrationStatusMRSummary, 0, len(pendingMRs)),
+		ReadyToLand:     readyToLand,
+		AutoLandEnabled: autoLandEnabled,
+		ChildrenTotal:   childrenTotal,
+		ChildrenClosed:  childrenClosed,
 	}
 
 	for _, mr := range mergedMRs {
@@ -712,6 +753,7 @@ func printIntegrationStatus(output *IntegrationStatusOutput) error {
 		fmt.Printf("Created: %s\n", output.Created)
 	}
 	fmt.Printf("Ahead of main: %d commits\n", output.AheadOfMain)
+	fmt.Printf("Epic children: %d/%d closed\n", output.ChildrenClosed, output.ChildrenTotal)
 
 	// Merged MRs
 	fmt.Printf("\nMerged MRs (%d):\n", len(output.MergedMRs))
@@ -734,6 +776,30 @@ func printIntegrationStatus(output *IntegrationStatusOutput) error {
 				statusInfo = fmt.Sprintf(" (%s)", mr.Status)
 			}
 			fmt.Printf("  %-12s  %s%s\n", mr.ID, mr.Title, style.Dim.Render(statusInfo))
+		}
+	}
+
+	// Landing status
+	fmt.Println()
+	if output.ReadyToLand {
+		fmt.Printf("%s Integration branch is ready to land.\n", style.Bold.Render("✓"))
+		if output.AutoLandEnabled {
+			fmt.Printf("  Auto-land: %s\n", style.Bold.Render("enabled"))
+		} else {
+			fmt.Printf("  Auto-land: %s\n", style.Dim.Render("disabled"))
+			fmt.Printf("  Run: gt mq integration land %s\n", output.Epic)
+		}
+	} else {
+		if output.ChildrenTotal == 0 {
+			fmt.Printf("%s Epic has no children yet.\n", style.Dim.Render("○"))
+		} else if output.ChildrenClosed < output.ChildrenTotal {
+			fmt.Printf("%s Waiting for %d/%d children to close.\n",
+				style.Dim.Render("○"), output.ChildrenTotal-output.ChildrenClosed, output.ChildrenTotal)
+		} else if len(output.PendingMRs) > 0 {
+			fmt.Printf("%s Waiting for %d pending MRs to merge.\n",
+				style.Dim.Render("○"), len(output.PendingMRs))
+		} else if output.AheadOfMain == 0 {
+			fmt.Printf("%s No commits ahead of main.\n", style.Dim.Render("○"))
 		}
 	}
 
