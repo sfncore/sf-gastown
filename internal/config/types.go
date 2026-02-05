@@ -685,8 +685,15 @@ type MergeQueueConfig struct {
 	// TargetBranch is the default branch to merge into (usually "main").
 	TargetBranch string `json:"target_branch"`
 
-	// IntegrationBranches enables integration branch workflow for epics.
-	IntegrationBranches bool `json:"integration_branches"`
+	// IntegrationBranchPolecatEnabled controls whether polecats auto-source
+	// their worktrees from integration branches when the parent epic has one.
+	// Nil defaults to true.
+	IntegrationBranchPolecatEnabled *bool `json:"integration_branch_polecat_enabled,omitempty"`
+
+	// IntegrationBranchRefineryEnabled controls whether mq submit and gt done
+	// auto-detect integration branches as MR targets.
+	// Nil defaults to true.
+	IntegrationBranchRefineryEnabled *bool `json:"integration_branch_refinery_enabled,omitempty"`
 
 	// IntegrationBranchTemplate is the pattern for integration branch names.
 	// Supports variables: {epic}, {prefix}, {user}
@@ -724,19 +731,43 @@ const (
 	OnConflictAutoRebase = "auto_rebase"
 )
 
+// IsPolecatIntegrationEnabled returns whether polecat integration branch
+// sourcing is enabled. Nil-safe, defaults to true.
+func (c *MergeQueueConfig) IsPolecatIntegrationEnabled() bool {
+	if c.IntegrationBranchPolecatEnabled == nil {
+		return true
+	}
+	return *c.IntegrationBranchPolecatEnabled
+}
+
+// IsRefineryIntegrationEnabled returns whether refinery/submit integration
+// branch auto-detection is enabled. Nil-safe, defaults to true.
+func (c *MergeQueueConfig) IsRefineryIntegrationEnabled() bool {
+	if c.IntegrationBranchRefineryEnabled == nil {
+		return true
+	}
+	return *c.IntegrationBranchRefineryEnabled
+}
+
+// boolPtr returns a pointer to a bool value.
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // DefaultMergeQueueConfig returns a MergeQueueConfig with sensible defaults.
 func DefaultMergeQueueConfig() *MergeQueueConfig {
 	return &MergeQueueConfig{
-		Enabled:              true,
-		TargetBranch:         "main",
-		IntegrationBranches:  true,
-		OnConflict:           OnConflictAssignBack,
-		RunTests:             true,
-		TestCommand:          "go test ./...",
-		DeleteMergedBranches: true,
-		RetryFlakyTests:      1,
-		PollInterval:         "30s",
-		MaxConcurrent:        1,
+		Enabled:                          true,
+		TargetBranch:                     "main",
+		IntegrationBranchPolecatEnabled:  boolPtr(true),
+		IntegrationBranchRefineryEnabled: boolPtr(true),
+		OnConflict:                       OnConflictAssignBack,
+		RunTests:                         true,
+		TestCommand:                      "go test ./...",
+		DeleteMergedBranches:             true,
+		RetryFlakyTests:                  1,
+		PollInterval:                     "30s",
+		MaxConcurrent:                    1,
 	}
 }
 

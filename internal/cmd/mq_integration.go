@@ -17,54 +17,21 @@ import (
 	"github.com/steveyegge/gastown/internal/workspace"
 )
 
-// Integration branch template constants
-const defaultIntegrationBranchTemplate = "integration/{epic}"
+// defaultIntegrationBranchTemplate is kept for local backward compat references.
+var defaultIntegrationBranchTemplate = beads.DefaultIntegrationBranchTemplate
 
 // invalidBranchCharsRegex matches characters that are invalid in git branch names.
 // Git branch names cannot contain: ~ ^ : \ space, .., @{, or end with .lock
 var invalidBranchCharsRegex = regexp.MustCompile(`[~^:\s\\]|\.\.|\.\.|@\{`)
 
-// buildIntegrationBranchName expands an integration branch template with variables.
-// Variables supported:
-//   - {epic}: Full epic ID (e.g., "RA-123")
-//   - {prefix}: Epic prefix before first hyphen (e.g., "RA")
-//   - {user}: Git user.name (e.g., "klauern")
-//
-// If template is empty, uses defaultIntegrationBranchTemplate.
+// buildIntegrationBranchName wraps beads.BuildIntegrationBranchName for local callers.
 func buildIntegrationBranchName(template, epicID string) string {
-	if template == "" {
-		template = defaultIntegrationBranchTemplate
-	}
-
-	result := template
-	result = strings.ReplaceAll(result, "{epic}", epicID)
-	result = strings.ReplaceAll(result, "{prefix}", extractEpicPrefix(epicID))
-
-	// Git user (optional - leaves placeholder if not available)
-	if user := getGitUserName(); user != "" {
-		result = strings.ReplaceAll(result, "{user}", user)
-	}
-
-	return result
+	return beads.BuildIntegrationBranchName(template, epicID)
 }
 
-// extractEpicPrefix extracts the prefix from an epic ID (before the first hyphen).
-// Examples: "RA-123" -> "RA", "PROJ-456" -> "PROJ", "abc" -> "abc"
+// extractEpicPrefix wraps beads.ExtractEpicPrefix for local callers.
 func extractEpicPrefix(epicID string) string {
-	if idx := strings.Index(epicID, "-"); idx > 0 {
-		return epicID[:idx]
-	}
-	return epicID
-}
-
-// getGitUserName returns the git user.name config value, or empty if not set.
-func getGitUserName() string {
-	cmd := exec.Command("git", "config", "user.name")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return beads.ExtractEpicPrefix(epicID)
 }
 
 // validateBranchName checks if a branch name is valid for git.
@@ -100,35 +67,9 @@ func validateBranchName(branchName string) error {
 	return nil
 }
 
-// getIntegrationBranchField extracts the integration_branch field from an epic's description.
-// Returns empty string if the field is not found.
+// getIntegrationBranchField wraps beads.GetIntegrationBranchField for local callers.
 func getIntegrationBranchField(description string) string {
-	if description == "" {
-		return ""
-	}
-
-	lines := strings.Split(description, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(trimmed), "integration_branch:") {
-			value := strings.TrimPrefix(trimmed, "integration_branch:")
-			value = strings.TrimPrefix(value, "Integration_branch:")
-			value = strings.TrimPrefix(value, "INTEGRATION_BRANCH:")
-			// Handle case variations
-			for _, prefix := range []string{"integration_branch:", "Integration_branch:", "INTEGRATION_BRANCH:"} {
-				if strings.HasPrefix(trimmed, prefix) {
-					value = strings.TrimPrefix(trimmed, prefix)
-					break
-				}
-			}
-			// Re-parse properly - the prefix removal above is messy
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) == 2 {
-				return strings.TrimSpace(parts[1])
-			}
-		}
-	}
-	return ""
+	return beads.GetIntegrationBranchField(description)
 }
 
 // getRigGit returns a Git object for the rig's repository.
@@ -143,6 +84,41 @@ func getRigGit(rigPath string) (*git.Git, error) {
 		return nil, fmt.Errorf("no repo base found (neither .repo.git nor mayor/rig exists)")
 	}
 	return git.NewGit(mayorPath), nil
+}
+
+// createLandWorktree creates a temporary worktree from .repo.git for land operations.
+// This avoids disrupting running agents (refinery, mayor) by operating in an isolated worktree.
+// The caller MUST call the returned cleanup function when done (typically via defer).
+// The worktree is checked out to startBranch (e.g., "main").
+func createLandWorktree(rigPath, startBranch string) (*git.Git, func(), error) {
+	landPath := filepath.Join(rigPath, ".land-worktree")
+	noop := func() {}
+
+	// Get bare repo for worktree creation
+	bareRepoPath := filepath.Join(rigPath, ".repo.git")
+	if _, err := os.Stat(bareRepoPath); err != nil {
+		return nil, noop, fmt.Errorf("bare repo not found at %s: %w", bareRepoPath, err)
+	}
+	bareGit := git.NewGitWithDir(bareRepoPath, "")
+
+	// Clean up any stale worktree from a previous failed run
+	if _, err := os.Stat(landPath); err == nil {
+		_ = bareGit.WorktreeRemove(landPath, true)
+		_ = os.RemoveAll(landPath)
+	}
+
+	// Create worktree checked out to the target branch.
+	// Use --force because the branch may already be checked out in refinery/rig.
+	if err := bareGit.WorktreeAddExistingForce(landPath, startBranch); err != nil {
+		return nil, noop, fmt.Errorf("creating land worktree: %w", err)
+	}
+
+	cleanup := func() {
+		_ = bareGit.WorktreeRemove(landPath, true)
+		_ = os.RemoveAll(landPath)
+	}
+
+	return git.NewGit(landPath), cleanup, nil
 }
 
 // getIntegrationBranchTemplate returns the integration branch template to use.
@@ -250,15 +226,21 @@ func runMqIntegrationCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("integration branch '%s' already exists on origin", branchName)
 	}
 
-	// Ensure we have latest main
+	// Ensure we have latest refs
 	fmt.Printf("Fetching latest from origin...\n")
 	if err := g.Fetch("origin"); err != nil {
 		return fmt.Errorf("fetching from origin: %w", err)
 	}
 
-	// 2. Create branch from origin/main
-	fmt.Printf("Creating branch '%s' from main...\n", branchName)
-	if err := g.CreateBranchFrom(branchName, "origin/main"); err != nil {
+	// 2. Create branch from base (default: origin/main)
+	baseBranch := "origin/main"
+	baseBranchDisplay := "main"
+	if mqIntegrationCreateBaseBranch != "" {
+		baseBranch = "origin/" + strings.TrimPrefix(mqIntegrationCreateBaseBranch, "origin/")
+		baseBranchDisplay = strings.TrimPrefix(baseBranch, "origin/")
+	}
+	fmt.Printf("Creating branch '%s' from %s...\n", branchName, baseBranchDisplay)
+	if err := g.CreateBranchFrom(branchName, baseBranch); err != nil {
 		return fmt.Errorf("creating branch: %w", err)
 	}
 
@@ -273,6 +255,10 @@ func runMqIntegrationCreate(cmd *cobra.Command, args []string) error {
 	// 4. Store integration branch info in epic metadata
 	// Update the epic's description to include the integration branch info
 	newDesc := addIntegrationBranchField(epic.Description, branchName)
+	// Also store base_branch if non-main was used (for land to know where to merge back)
+	if mqIntegrationCreateBaseBranch != "" {
+		newDesc = beads.AddBaseBranchField(newDesc, baseBranchDisplay)
+	}
 	if newDesc != epic.Description {
 		if err := bd.Update(epicID, beads.UpdateOptions{Description: &newDesc}); err != nil {
 			// Non-fatal - branch was created, just metadata update failed
@@ -284,44 +270,16 @@ func runMqIntegrationCreate(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\n%s Created integration branch\n", style.Bold.Render("✓"))
 	fmt.Printf("  Epic:   %s\n", epicID)
 	fmt.Printf("  Branch: %s\n", branchName)
-	fmt.Printf("  From:   main\n")
+	fmt.Printf("  From:   %s\n", baseBranchDisplay)
 	fmt.Printf("\n  Future MRs for this epic's children can target:\n")
 	fmt.Printf("    gt mq submit --epic %s\n", epicID)
 
 	return nil
 }
 
-// addIntegrationBranchField adds or updates the integration_branch field in a description.
+// addIntegrationBranchField wraps beads.AddIntegrationBranchField for local callers.
 func addIntegrationBranchField(description, branchName string) string {
-	fieldLine := "integration_branch: " + branchName
-
-	// If description is empty, just return the field
-	if description == "" {
-		return fieldLine
-	}
-
-	// Check if integration_branch field already exists
-	lines := strings.Split(description, "\n")
-	var newLines []string
-	found := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(trimmed), "integration_branch:") {
-			// Replace existing field
-			newLines = append(newLines, fieldLine)
-			found = true
-		} else {
-			newLines = append(newLines, line)
-		}
-	}
-
-	if !found {
-		// Add field at the beginning
-		newLines = append([]string{fieldLine}, newLines...)
-	}
-
-	return strings.Join(newLines, "\n")
+	return beads.AddIntegrationBranchField(description, branchName)
 }
 
 // runMqIntegrationLand merges an integration branch to main.
@@ -341,6 +299,8 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize beads and git for the rig
+	// Use getRigGit for early ref-only checks (branch exists, fetch).
+	// Work-tree operations (checkout, merge, push) use a temporary worktree created later.
 	bd := beads.New(r.Path)
 	g, err := getRigGit(r.Path)
 	if err != nil {
@@ -370,6 +330,13 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 	branchName := getIntegrationBranchField(epic.Description)
 	if branchName == "" {
 		branchName = buildIntegrationBranchName(defaultIntegrationBranchTemplate, epicID)
+	}
+
+	// Read base_branch from epic metadata (where to merge back)
+	// Default to "main" if not stored (backward compat with pre-base-branch epics)
+	targetBranch := beads.GetBaseBranchField(epic.Description)
+	if targetBranch == "" {
+		targetBranch = "main"
 	}
 
 	fmt.Printf("Landing integration branch for epic: %s\n", epicID)
@@ -424,49 +391,44 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 	// Dry run stops here
 	if mqIntegrationLandDryRun {
 		fmt.Printf("\n%s Dry run complete. Would perform:\n", style.Bold.Render("🔍"))
-		fmt.Printf("  1. Merge %s to main (--no-ff)\n", branchName)
+		fmt.Printf("  1. Merge %s to %s (--no-ff)\n", branchName, targetBranch)
 		if !mqIntegrationLandSkipTests {
-			fmt.Printf("  2. Run tests on main\n")
+			fmt.Printf("  2. Run tests on %s\n", targetBranch)
 		}
-		fmt.Printf("  3. Push main to origin\n")
+		fmt.Printf("  3. Push %s to origin\n", targetBranch)
 		fmt.Printf("  4. Delete integration branch (local and remote)\n")
 		fmt.Printf("  5. Update epic status to closed\n")
 		return nil
 	}
 
-	// Ensure working directory is clean
-	status, err := g.Status()
-	if err != nil {
-		return fmt.Errorf("checking git status: %w", err)
-	}
-	if !status.Clean {
-		return fmt.Errorf("working directory is not clean; please commit or stash changes")
-	}
-
-	// Fetch latest
+	// Fetch latest before creating worktree (ensures refs are up to date)
 	fmt.Printf("Fetching latest from origin...\n")
 	if err := g.Fetch("origin"); err != nil {
 		return fmt.Errorf("fetching from origin: %w", err)
 	}
 
-	// 4. Checkout main and merge integration branch
-	fmt.Printf("Checking out main...\n")
-	if err := g.Checkout("main"); err != nil {
-		return fmt.Errorf("checking out main: %w", err)
+	// Create a temporary worktree for the merge operation.
+	// This avoids disrupting running agents (refinery, mayor) whose worktrees
+	// would be corrupted by checkout/merge operations.
+	fmt.Printf("Creating temporary worktree for merge...\n")
+	landGit, cleanup, err := createLandWorktree(r.Path, targetBranch)
+	if err != nil {
+		return fmt.Errorf("creating land worktree: %w", err)
 	}
+	defer cleanup()
 
-	// Pull latest main
-	if err := g.Pull("origin", "main"); err != nil {
+	// Pull latest target branch into the worktree
+	if err := landGit.Pull("origin", targetBranch); err != nil {
 		// Non-fatal if pull fails (e.g., first time)
-		fmt.Printf("  %s\n", style.Dim.Render("(pull from origin/main skipped)"))
+		fmt.Printf("  %s\n", style.Dim.Render(fmt.Sprintf("(pull from origin/%s skipped)", targetBranch)))
 	}
 
-	// Merge with --no-ff
-	fmt.Printf("Merging %s to main...\n", branchName)
+	// 4. Merge integration branch into target
+	fmt.Printf("Merging %s to %s...\n", branchName, targetBranch)
 	mergeMsg := fmt.Sprintf("Merge %s: %s\n\nEpic: %s", branchName, epic.Title, epicID)
-	if err := g.MergeNoFF("origin/"+branchName, mergeMsg); err != nil {
-		// Abort merge on failure (best-effort cleanup)
-		_ = g.AbortMerge()
+	if err := landGit.MergeNoFF("origin/"+branchName, mergeMsg); err != nil {
+		// Abort merge on failure (cleanup handles worktree removal)
+		_ = landGit.AbortMerge()
 		return fmt.Errorf("merge failed: %w", err)
 	}
 	fmt.Printf("  %s Merged successfully\n", style.Bold.Render("✓"))
@@ -476,14 +438,9 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 		testCmd := getTestCommand(r.Path)
 		if testCmd != "" {
 			fmt.Printf("Running tests: %s\n", testCmd)
-			if err := runTestCommand(r.Path, testCmd); err != nil {
-				// Tests failed - reset main
-				fmt.Printf("  %s Tests failed, resetting main...\n", style.Bold.Render("✗"))
-				_ = g.Checkout("main") // best-effort: need to be on main to reset
-				resetErr := resetHard(g, "HEAD~1")
-				if resetErr != nil {
-					return fmt.Errorf("tests failed and could not reset: %w (test error: %v)", resetErr, err)
-				}
+			if err := runTestCommand(landGit.WorkDir(), testCmd); err != nil {
+				// Tests failed - no need to reset, worktree is temporary
+				fmt.Printf("  %s Tests failed\n", style.Bold.Render("✗"))
 				return fmt.Errorf("tests failed: %w", err)
 			}
 			fmt.Printf("  %s Tests passed\n", style.Bold.Render("✓"))
@@ -494,19 +451,26 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s\n", style.Dim.Render("(tests skipped)"))
 	}
 
+	// Verify the merge actually brought changes (guard against empty merges).
+	// An empty merge means conflict resolution discarded all integration branch work,
+	// which would silently lose data if we proceed to delete the branch.
+	verifyCmd := exec.Command("git", "diff", "--stat", "HEAD~1..HEAD")
+	verifyCmd.Dir = landGit.WorkDir()
+	diffOutput, verifyErr := verifyCmd.Output()
+	if verifyErr == nil && len(strings.TrimSpace(string(diffOutput))) == 0 {
+		return fmt.Errorf("merge produced no file changes — integration branch work may have been discarded during conflict resolution\n"+
+			"  Integration branch '%s' has NOT been deleted.\n"+
+			"  Inspect manually: git diff %s...origin/%s", branchName, targetBranch, branchName)
+	}
+
 	// 6. Push to origin
-	fmt.Printf("Pushing main to origin...\n")
-	if err := g.Push("origin", "main", false); err != nil {
-		// Reset on push failure
-		resetErr := resetHard(g, "HEAD~1")
-		if resetErr != nil {
-			return fmt.Errorf("push failed and could not reset: %w (push error: %v)", resetErr, err)
-		}
+	fmt.Printf("Pushing %s to origin...\n", targetBranch)
+	if err := landGit.Push("origin", targetBranch, false); err != nil {
 		return fmt.Errorf("push failed: %w", err)
 	}
 	fmt.Printf("  %s Pushed to origin\n", style.Bold.Render("✓"))
 
-	// 7. Delete integration branch
+	// 7. Delete integration branch (use bare repo git — ref-only operations)
 	fmt.Printf("Deleting integration branch...\n")
 	// Delete remote first
 	if err := g.DeleteRemoteBranch("origin", branchName); err != nil {
@@ -532,7 +496,7 @@ func runMqIntegrationLand(cmd *cobra.Command, args []string) error {
 	// Success output
 	fmt.Printf("\n%s Successfully landed integration branch\n", style.Bold.Render("✓"))
 	fmt.Printf("  Epic:   %s\n", epicID)
-	fmt.Printf("  Branch: %s → main\n", branchName)
+	fmt.Printf("  Branch: %s → %s\n", branchName, targetBranch)
 
 	return nil
 }
