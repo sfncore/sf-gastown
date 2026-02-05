@@ -281,3 +281,8 @@ required = true
 [vars.issue]
 description = "The tracking issue for this review task"
 required = true
+
+# Computed variables (set during execution)
+[vars.rig]
+required = true
+description = "Target rig"
