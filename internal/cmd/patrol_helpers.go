@@ -153,16 +153,27 @@ func autoSpawnPatrol(cfg PatrolConfig) (string, error) {
 	}
 
 	// Parse the created molecule ID from output
+	// Format: "Root issue: <rig>-wisp-<hash>" where rig prefix varies
 	var patrolID string
 	spawnOutput := stdoutSpawn.String()
 	for _, line := range strings.Split(spawnOutput, "\n") {
-		if strings.Contains(line, "Root issue:") || strings.Contains(line, "Created") {
-			parts := strings.Fields(line)
-			for _, p := range parts {
-				if strings.HasPrefix(p, "bd-wisp-") || strings.HasPrefix(p, "wisp-") || strings.HasPrefix(p, "gt-") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Root issue:") {
+			patrolID = strings.TrimSpace(strings.TrimPrefix(line, "Root issue:"))
+			break
+		}
+	}
+	// Fallback: look for any token containing "-wisp-"
+	if patrolID == "" {
+		for _, line := range strings.Split(spawnOutput, "\n") {
+			for _, p := range strings.Fields(line) {
+				if strings.Contains(p, "-wisp-") {
 					patrolID = p
 					break
 				}
+			}
+			if patrolID != "" {
+				break
 			}
 		}
 	}
