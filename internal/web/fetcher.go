@@ -1471,10 +1471,81 @@ func (f *LiveConvoyFetcher) FetchMayor() (*MayorStatus, error) {
 
 	// Try to detect runtime from mayor config or session
 	if status.IsAttached {
-		status.Runtime = "claude" // Default; could enhance to detect actual runtime
+		status.Runtime = f.detectMayorRuntime(mayorSessionName)
 	}
 
 	return status, nil
+}
+
+// detectMayorRuntime detects the AI runtime (opencode, claude, etc.) by examining
+// the tmux pane process and environment variables.
+func (f *LiveConvoyFetcher) detectMayorRuntime(sessionName string) string {
+	// Get the pane PID for the session
+	stdout, err := runCmd(tmuxCmdTimeout, "tmux", "list-panes", "-t", sessionName, "-F", "#{pane_pid}")
+	if err != nil {
+		return "unknown"
+	}
+
+	panePID := strings.TrimSpace(stdout.String())
+	if panePID == "" {
+		return "unknown"
+	}
+
+	// Check process command line for runtime indicators
+	cmdlinePath := filepath.Join("/proc", panePID, "cmdline")
+	if data, err := os.ReadFile(cmdlinePath); err == nil {
+		cmdline := string(data)
+		// Check for opencode
+		if strings.Contains(cmdline, "opencode") {
+			return "opencode"
+		}
+		// Check for claude
+		if strings.Contains(cmdline, "claude") {
+			return "claude"
+		}
+		// Check for codex
+		if strings.Contains(cmdline, "codex") {
+			return "codex"
+		}
+		// Check for cursor
+		if strings.Contains(cmdline, "cursor") {
+			return "cursor"
+		}
+	}
+
+	// Fallback: check environment variables
+	environPath := filepath.Join("/proc", panePID, "environ")
+	if data, err := os.ReadFile(environPath); err == nil {
+		environ := string(data)
+		// Check for opencode-specific env vars
+		if strings.Contains(environ, "OPENCODE_") {
+			return "opencode"
+		}
+		// Check for claude-specific env vars
+		if strings.Contains(environ, "CLAUDE_CODE_") {
+			return "claude"
+		}
+	}
+
+	// Final fallback: try ps command
+	stdout, err = runCmd(tmuxCmdTimeout, "ps", "-p", panePID, "-o", "args=")
+	if err == nil {
+		args := strings.ToLower(stdout.String())
+		if strings.Contains(args, "opencode") {
+			return "opencode"
+		}
+		if strings.Contains(args, "claude") {
+			return "claude"
+		}
+		if strings.Contains(args, "codex") {
+			return "codex"
+		}
+		if strings.Contains(args, "cursor") {
+			return "cursor"
+		}
+	}
+
+	return "unknown"
 }
 
 // FetchIssues returns open issues (the backlog).
