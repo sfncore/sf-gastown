@@ -9,10 +9,11 @@ from the integration branch (so they start with sibling work already present),
 the Refinery merges completed MRs into the integration branch instead of main,
 and when all epic children are closed, the Refinery can land the integration
 branch back to its base branch (main by default, or whatever was specified
-with `--base-branch` at creation) as a single atomic merge — either on command
-or automatically via patrol. The result is that an entire epic flows through the system as a
-coherent unit, from first sling to final land, without any manual branch
-targeting.
+with `--base-branch` at creation) as a single merge commit.
+
+Landing can happen on command or automatically via patrol. The result is that
+an entire epic flows through the system as a coherent unit, from first sling
+to final land, without any manual branch targeting.
 
 ## Workflow
 
@@ -68,7 +69,7 @@ targeting.
    gt mq integration land gt-auth-epic
    ```
    This merges the integration branch back to its base branch (main by
-   default) as a single atomic commit, deletes the branch, and closes the
+   default) as a single merge commit, deletes the branch, and closes the
    epic.
 
 ## Concept
@@ -210,8 +211,9 @@ When `gt done` or `gt mq submit` runs:
 | 6 | Check if branch exists (local, then remote) | Verify it's real |
 | 7 | If found, target MR at that branch | Instead of main |
 
-The `--epic` flag on `gt mq submit` bypasses auto-detection and explicitly
-targets `integration/<epic>`.
+The `--epic` flag on `gt mq submit` bypasses auto-detection and resolves
+the target branch using the configured template (defaulting to
+`integration/{epic}`).
 
 ## Branch Naming
 
