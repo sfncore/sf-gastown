@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 6
+version = 7
 
 [vars]
 [vars.wisp_type]
@@ -158,6 +158,8 @@ needs = ["queue-scan"]
 description = """
 Pick next branch from queue. Attempt mechanical rebase on current main.
 
+**Config: target_branch = {{target_branch}}**
+
 **Step 1: Checkout and attempt rebase**
 ```bash
 git checkout -b temp origin/<polecat-branch>
@@ -232,11 +234,12 @@ id = "run-tests"
 title = "Run test suite"
 needs = ["process-branch"]
 description = """
-{{run_tests}} is the configured test setting.
+**Config: run_tests = {{run_tests}}**
+**Config: test_command = {{test_command}}**
 
-If run_tests is "false": Skip this step entirely. Proceed to handle-failures.
+If run_tests = "false": Skip this step entirely. Proceed to handle-failures.
 
-If run_tests is "true":
+If run_tests = "true":
 Run the test suite:
 
 ```bash
@@ -281,7 +284,11 @@ needs = ["handle-failures"]
 description = """
 Merge and push. CRITICAL: Notifications come IMMEDIATELY after push.
 
-**Important**: When {{integration_branch_refinery_enabled}} is "true", the MR's target branch
+**Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
+**Config: target_branch = {{target_branch}}**
+**Config: delete_merged_branches = {{delete_merged_branches}}**
+
+When integration_branch_refinery_enabled = "true", the MR's target branch
 may be an integration branch (not just {{target_branch}}). Check the MR's target field and use
 that as the merge destination. Only fall back to {{target_branch}} if no explicit target is set.
 
@@ -343,7 +350,7 @@ The message ID was tracked when you processed inbox-check.
 git branch -d temp
 ```
 
-{{delete_merged_branches}} controls whether to delete the remote source branch.
+delete_merged_branches (see config above) controls whether to delete the remote source branch.
 
 If delete_merged_branches is "true":
 ```bash
@@ -419,17 +426,17 @@ needs = ["generate-summary"]
 description = """
 Check if any integration branches are ready to land.
 
-{{integration_branch_refinery_enabled}} controls whether the refinery uses integration branches at all.
-{{integration_branch_auto_land}} controls whether it auto-lands them.
+**Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
+**Config: integration_branch_auto_land = {{integration_branch_auto_land}}**
 
 **Gate 1: Is integration branch management enabled?**
 
-If integration_branch_refinery_enabled is "false": Skip this step entirely.
+If integration_branch_refinery_enabled = "false": Skip this step entirely.
 The refinery does not manage integration branches — all merges go to {{target_branch}}.
 
 **Gate 2: Is auto-landing enabled?**
 
-If integration_branch_refinery_enabled is "true" AND integration_branch_auto_land is "false":
+If integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "false":
 Check status for informational purposes only. Do NOT land.
 Log readiness state but take no action — manual landing required.
 
