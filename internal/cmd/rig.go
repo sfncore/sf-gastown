@@ -9,20 +9,20 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
-	"github.com/steveyegge/gastown/internal/crew"
-	"github.com/steveyegge/gastown/internal/deps"
-	"github.com/steveyegge/gastown/internal/git"
-	"github.com/steveyegge/gastown/internal/hooks"
-	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/refinery"
-	"github.com/steveyegge/gastown/internal/rig"
-	"github.com/steveyegge/gastown/internal/style"
-	"github.com/steveyegge/gastown/internal/tmux"
-	"github.com/steveyegge/gastown/internal/wisp"
-	"github.com/steveyegge/gastown/internal/witness"
-	"github.com/steveyegge/gastown/internal/workspace"
+	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/sfncore/sf-gastown/internal/crew"
+	"github.com/sfncore/sf-gastown/internal/deps"
+	"github.com/sfncore/sf-gastown/internal/git"
+	"github.com/sfncore/sf-gastown/internal/hooks"
+	"github.com/sfncore/sf-gastown/internal/polecat"
+	"github.com/sfncore/sf-gastown/internal/refinery"
+	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/sfncore/sf-gastown/internal/wisp"
+	"github.com/sfncore/sf-gastown/internal/witness"
+	"github.com/sfncore/sf-gastown/internal/workspace"
 )
 
 var rigCmd = &cobra.Command{
@@ -67,7 +67,7 @@ Use --adopt to register an existing directory instead of creating new:
   - Adds entry to mayor/rigs.json
 
 Example:
-  gt rig add gastown https://github.com/steveyegge/gastown
+  gt rig add gastown https://github.com/sfncore/sf-gastown
   gt rig add my-project git@github.com:user/repo.git --prefix mp
   gt rig add existing-rig --adopt`,
 	Args: cobra.RangeArgs(1, 2),

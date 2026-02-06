@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/steveyegge/gastown/internal/hooks"
+	"github.com/sfncore/sf-gastown/internal/hooks"
 )
 
 // HooksSyncCheck verifies all settings.json files match what gt hooks sync would generate.
