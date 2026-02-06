@@ -8,8 +8,9 @@ becomes the automatic target for every stage: polecats spawn their worktrees
 from the integration branch (so they start with sibling work already present),
 the Refinery merges completed MRs into the integration branch instead of main,
 and when all epic children are closed, the Refinery can land the integration
-branch to main as a single atomic merge — either on command or automatically
-via patrol. The result is that an entire epic flows through the system as a
+branch back to its base branch (main by default, or whatever was specified
+with `--base-branch` at creation) as a single atomic merge — either on command
+or automatically via patrol. The result is that an entire epic flows through the system as a
 coherent unit, from first sling to final land, without any manual branch
 targeting.
 
@@ -66,8 +67,9 @@ targeting.
    ```bash
    gt mq integration land gt-auth-epic
    ```
-   This merges the integration branch to main as a single atomic commit,
-   deletes the branch, and closes the epic.
+   This merges the integration branch back to its base branch (main by
+   default) as a single atomic commit, deletes the branch, and closes the
+   epic.
 
 ## Concept
 
@@ -106,7 +108,8 @@ Integration branches batch epic work on a shared branch, then land atomically:
                     (shared branch)
                                │
                                ▼ gt mq integration land
-                             main
+                          base branch
+                    (main or --base-branch)
                      (single merge commit)
 ```
 
@@ -176,7 +179,7 @@ Once all children are closed and all MRs merged:
 ```bash
 gt mq integration land gt-auth-epic
 # → Verified all MRs merged
-# → Merged integration/gt-auth-epic → main (--no-ff)
+# → Merged integration/gt-auth-epic → base branch (--no-ff)
 # → Tests passed
 # → Pushed to origin
 # → Deleted integration/gt-auth-epic
@@ -262,7 +265,7 @@ gt mq integration create <epic-id> [flags]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--branch` | Override branch name template | Config template or `integration/{epic}` |
-| `--base-branch` | Create from this branch instead of main | `origin/main` |
+| `--base-branch` | Create from this branch instead of main (also sets where `land` merges back to) | `origin/main` |
 
 **What it does:**
 
@@ -271,7 +274,7 @@ gt mq integration create <epic-id> [flags]
 3. Validates branch name (git-safe characters)
 4. Creates local branch from base
 5. Pushes to origin
-6. Stores branch name in epic metadata
+6. Stores branch name and base branch in epic metadata
 
 **Error cases:**
 
@@ -312,7 +315,7 @@ gt mq integration status <epic-id> [flags]
 
 ### `gt mq integration land <epic-id>`
 
-Merge an epic's integration branch to main.
+Merge an epic's integration branch back to its base branch.
 
 ```bash
 gt mq integration land <epic-id> [flags]
@@ -329,14 +332,15 @@ gt mq integration land <epic-id> [flags]
 **What it does:**
 
 1. Verifies epic exists and has an integration branch
-2. Checks all MRs targeting integration branch are merged
-3. Creates a temporary worktree (avoids disrupting running agents)
-4. Merges integration branch to target using `--no-ff`
-5. Runs tests (unless `--skip-tests`)
-6. Verifies merge brought changes (guards against empty merges)
-7. Pushes to origin
-8. Deletes integration branch (local and remote)
-9. Closes the epic
+2. Reads base branch from epic metadata (defaults to `main` if not stored)
+3. Checks all MRs targeting integration branch are merged
+4. Creates a temporary worktree (avoids disrupting running agents)
+5. Merges integration branch to base branch using `--no-ff`
+6. Runs tests (unless `--skip-tests`)
+7. Verifies merge brought changes (guards against empty merges)
+8. Pushes to origin
+9. Deletes integration branch (local and remote)
+10. Closes the epic
 
 **Error cases:**
 
