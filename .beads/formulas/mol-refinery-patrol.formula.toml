@@ -33,12 +33,36 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 5
+version = 6
 
 [vars]
 [vars.wisp_type]
 description = "Type of wisp created for this molecule"
 default = "patrol"
+
+[vars.integration_branch_refinery_enabled]
+description = "Whether the refinery merges to integration branches (true) or always to target_branch (false)"
+default = "true"
+
+[vars.integration_branch_auto_land]
+description = "Whether to auto-land integration branches when epic children are all closed"
+default = "false"
+
+[vars.run_tests]
+description = "Whether to run tests before merging"
+default = "true"
+
+[vars.test_command]
+description = "Test command to run (if run_tests is true)"
+default = "go test ./..."
+
+[vars.target_branch]
+description = "Default target branch for merges"
+default = "main"
+
+[vars.delete_merged_branches]
+description = "Whether to delete source branches after merge"
+default = "true"
 
 [[steps]]
 id = "inbox-check"
@@ -137,7 +161,7 @@ Pick next branch from queue. Attempt mechanical rebase on current main.
 **Step 1: Checkout and attempt rebase**
 ```bash
 git checkout -b temp origin/<polecat-branch>
-git rebase origin/main
+git rebase origin/{{target_branch}}
 ```
 
 **Step 2: Check rebase result**
@@ -208,10 +232,15 @@ id = "run-tests"
 title = "Run test suite"
 needs = ["process-branch"]
 description = """
-Run the test suite.
+{{run_tests}} is the configured test setting.
+
+If run_tests is "false": Skip this step entirely. Proceed to handle-failures.
+
+If run_tests is "true":
+Run the test suite:
 
 ```bash
-go test ./...
+{{test_command}}
 ```
 
 Track results: pass count, fail count, specific failures."""
@@ -250,13 +279,18 @@ id = "merge-push"
 title = "Merge and push to main"
 needs = ["handle-failures"]
 description = """
-Merge to main and push. CRITICAL: Notifications come IMMEDIATELY after push.
+Merge and push. CRITICAL: Notifications come IMMEDIATELY after push.
+
+**Important**: When {{integration_branch_refinery_enabled}} is "true", the MR's target branch
+may be an integration branch (not just {{target_branch}}). Check the MR's target field and use
+that as the merge destination. Only fall back to {{target_branch}} if no explicit target is set.
 
 **Step 1: Merge and Push**
+Determine the merge target: use the MR's target field if set, otherwise {{target_branch}}.
 ```bash
-git checkout main
+git checkout <merge-target>
 git merge --ff-only temp
-git push origin main
+git push origin <merge-target>
 ```
 
 ⚠️ **STOP HERE - DO NOT PROCEED UNTIL STEPS 2-3 COMPLETE**
@@ -307,8 +341,16 @@ The message ID was tracked when you processed inbox-check.
 **Step 5: Cleanup (only after Steps 2-4 confirmed)**
 ```bash
 git branch -d temp
+```
+
+{{delete_merged_branches}} controls whether to delete the remote source branch.
+
+If delete_merged_branches is "true":
+```bash
 git push origin --delete <polecat-branch>
 ```
+
+If delete_merged_branches is "false": Leave the remote branch intact.
 
 **VERIFICATION GATE**: You CANNOT proceed to loop-check without:
 - [x] MERGED mail sent to witness
@@ -377,7 +419,30 @@ needs = ["generate-summary"]
 description = """
 Check if any integration branches are ready to land.
 
-**When to check**: After the normal MQ is empty (no more polecat branches to merge).
+{{integration_branch_refinery_enabled}} controls whether the refinery uses integration branches at all.
+{{integration_branch_auto_land}} controls whether it auto-lands them.
+
+**Gate 1: Is integration branch management enabled?**
+
+If integration_branch_refinery_enabled is "false": Skip this step entirely.
+The refinery does not manage integration branches — all merges go to {{target_branch}}.
+
+**Gate 2: Is auto-landing enabled?**
+
+If integration_branch_refinery_enabled is "true" AND integration_branch_auto_land is "false":
+Check status for informational purposes only. Do NOT land.
+Log readiness state but take no action — manual landing required.
+
+```bash
+bd list --type=epic --status=open
+# For each epic:
+gt mq integration status <epic-id>
+# Log the output but DO NOT run gt mq integration land
+```
+
+**Gate 3: Auto-land enabled — proceed with landing**
+
+If integration_branch_refinery_enabled is "true" AND integration_branch_auto_land is "true":
 
 **Step 1: Find epics with integration branches**
 ```bash
@@ -392,14 +457,9 @@ gt mq integration status <epic-id>
 **Step 2: Evaluate status output**
 
 The status shows:
-- `auto_land_enabled`: from rig's `integration_branch_auto_land` setting
 - `ready_to_land`: true when ALL conditions met (commits ahead, all children closed, no pending MRs)
 
-**Step 3: Decision**
-
-If `auto_land_enabled: false`: Skip. Integration branches must be landed manually.
-
-If `auto_land_enabled: true` AND `ready_to_land: true`:
+If `ready_to_land: true`:
 ```bash
 gt mq integration land <epic-id>
 ```

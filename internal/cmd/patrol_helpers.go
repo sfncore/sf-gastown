@@ -15,14 +15,15 @@ import (
 
 // PatrolConfig holds role-specific patrol configuration.
 type PatrolConfig struct {
-	RoleName      string   // "deacon", "witness", "refinery"
-	PatrolMolName string   // "mol-deacon-patrol", etc.
-	BeadsDir      string   // where to look for beads
-	Assignee      string   // agent identity for pinning
-	HeaderEmoji   string   // display emoji
-	HeaderTitle   string   // "Patrol Status", etc.
-	WorkLoopSteps []string // role-specific instructions
-	CheckInProgress bool   // whether to check in_progress status first (witness/refinery do, deacon doesn't)
+	RoleName        string   // "deacon", "witness", "refinery"
+	PatrolMolName   string   // "mol-deacon-patrol", etc.
+	BeadsDir        string   // where to look for beads
+	Assignee        string   // agent identity for pinning
+	HeaderEmoji     string   // display emoji
+	HeaderTitle     string   // "Patrol Status", etc.
+	WorkLoopSteps   []string // role-specific instructions
+	CheckInProgress bool     // whether to check in_progress status first (witness/refinery do, deacon doesn't)
+	ExtraVars       []string // additional --var key=value args for wisp creation
 }
 
 // findActivePatrol finds an active patrol molecule for the role.
@@ -137,7 +138,11 @@ func autoSpawnPatrol(cfg PatrolConfig) (string, error) {
 	}
 
 	// Create the patrol wisp
-	cmdSpawn := exec.Command("bd", "--no-daemon", "mol", "wisp", "create", protoID, "--actor", cfg.RoleName)
+	spawnArgs := []string{"--no-daemon", "mol", "wisp", "create", protoID, "--actor", cfg.RoleName}
+	for _, v := range cfg.ExtraVars {
+		spawnArgs = append(spawnArgs, "--var", v)
+	}
+	cmdSpawn := exec.Command("bd", spawnArgs...)
 	cmdSpawn.Dir = cfg.BeadsDir
 	var stdoutSpawn, stderrSpawn bytes.Buffer
 	cmdSpawn.Stdout = &stdoutSpawn
@@ -154,7 +159,7 @@ func autoSpawnPatrol(cfg PatrolConfig) (string, error) {
 		if strings.Contains(line, "Root issue:") || strings.Contains(line, "Created") {
 			parts := strings.Fields(line)
 			for _, p := range parts {
-				if strings.HasPrefix(p, "wisp-") || strings.HasPrefix(p, "gt-") {
+				if strings.HasPrefix(p, "bd-wisp-") || strings.HasPrefix(p, "wisp-") || strings.HasPrefix(p, "gt-") {
 					patrolID = p
 					break
 				}

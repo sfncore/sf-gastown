@@ -805,6 +805,12 @@ func printIntegrationStatus(output *IntegrationStatusOutput) error {
 		} else if output.AheadOfMain == 0 {
 			fmt.Printf("%s No commits ahead of main.\n", style.Dim.Render("○"))
 		}
+		// Show auto-land status even when not ready
+		if output.AutoLandEnabled {
+			fmt.Printf("  Auto-land: %s (will land when ready)\n", style.Bold.Render("enabled"))
+		} else {
+			fmt.Printf("  Auto-land: %s\n", style.Dim.Render("disabled"))
+		}
 	}
 
 	return nil
