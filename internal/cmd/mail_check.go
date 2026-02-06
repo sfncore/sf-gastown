@@ -4,11 +4,85 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
+	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/sfncore/sf-gastown/internal/mail"
 	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/spf13/cobra"
 )
+
+// mailCheckCacheDir is the directory for mail check cache files (overridden in tests)
+var mailCheckCacheDir = ""
+
+// mailCheckCacheTTL is the cache time-to-live (30 seconds)
+const mailCheckCacheTTL = 30 * time.Second
+
+// mailCheckCacheEntry represents a cached mail check result
+type mailCheckCacheEntry struct {
+	Timestamp time.Time `json:"timestamp"`
+	Address   string    `json:"address"`
+	Unread    int       `json:"unread"`
+	Subjects  []string  `json:"subjects,omitempty"`
+}
+
+// mailCheckCachePath returns the cache file path for a given address
+func mailCheckCachePath(address string) string {
+	// Sanitize address for use as filename
+	safe := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(address, "_")
+	return filepath.Join(mailCheckCacheDir, safe+".json")
+}
+
+// loadMailCheckCache loads a cached entry if it exists and hasn't expired
+func loadMailCheckCache(address string) *mailCheckCacheEntry {
+	if mailCheckCacheDir == "" {
+		return nil
+	}
+
+	path := mailCheckCachePath(address)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var entry mailCheckCacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return nil
+	}
+
+	// Verify address matches (security check)
+	if entry.Address != address {
+		return nil
+	}
+
+	// Check expiry
+	if time.Since(entry.Timestamp) > mailCheckCacheTTL {
+		return nil
+	}
+
+	return &entry
+}
+
+// saveMailCheckCache saves a cache entry to disk
+func saveMailCheckCache(entry *mailCheckCacheEntry) error {
+	if mailCheckCacheDir == "" {
+		return nil
+	}
+
+	// Ensure cache directory exists
+	if err := os.MkdirAll(mailCheckCacheDir, 0755); err != nil {
+		return err
+	}
+
+	path := mailCheckCachePath(entry.Address)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
 
 func runMailCheck(cmd *cobra.Command, args []string) error {
 	// Determine which inbox (priority: --identity flag, auto-detect)
