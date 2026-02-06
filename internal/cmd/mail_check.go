@@ -4,11 +4,75 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/sfncore/sf-gastown/internal/mail"
 	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/spf13/cobra"
 )
+
+// Cache variables for mail check
+type mailCheckCacheEntry struct {
+	Timestamp time.Time `json:"timestamp"`
+	Address   string    `json:"address"`
+	Unread    int       `json:"unread"`
+	Subjects  []string  `json:"subjects,omitempty"`
+}
+
+var mailCheckCacheDir string
+
+const mailCheckCacheTTL = 30 * time.Second
+
+func mailCheckCachePath(address string) string {
+	// Sanitize address for filesystem
+	safeAddress := strings.ReplaceAll(address, "/", "_")
+	return filepath.Join(mailCheckCacheDir, safeAddress+".json")
+}
+
+func loadMailCheckCache(address string) *mailCheckCacheEntry {
+	if mailCheckCacheDir == "" {
+		return nil
+	}
+
+	path := mailCheckCachePath(address)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var entry mailCheckCacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return nil
+	}
+
+	// Check TTL
+	if time.Since(entry.Timestamp) > mailCheckCacheTTL {
+		return nil
+	}
+
+	// Verify address matches
+	if entry.Address != address {
+		return nil
+	}
+
+	return &entry
+}
+
+func saveMailCheckCache(entry *mailCheckCacheEntry) error {
+	if mailCheckCacheDir == "" {
+		return nil
+	}
+
+	path := mailCheckCachePath(entry.Address)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
 
 func runMailCheck(cmd *cobra.Command, args []string) error {
 	// Determine which inbox (priority: --identity flag, auto-detect)
