@@ -33,7 +33,7 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree)."""
 formula = "mol-refinery-patrol"
-version = 7
+version = 8
 
 [vars]
 wisp_type = "patrol"
@@ -427,29 +427,21 @@ Check if any integration branches are ready to land.
 **Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
 **Config: integration_branch_auto_land = {{integration_branch_auto_land}}**
 
-**Gate 1: Is integration branch management enabled?**
+**REQUIRED**: Before making any decision, you MUST state the config values out loud:
+"integration_branch_refinery_enabled = <value>, integration_branch_auto_land = <value>"
+Then follow the matching gate below.
 
-If integration_branch_refinery_enabled = "false": Skip this step entirely.
-The refinery does not manage integration branches — all merges go to {{target_branch}}.
+**Gate 1: integration_branch_refinery_enabled = "false"**
+Say: "Skipping — integration branch management is disabled."
+Close this step immediately. Do nothing else.
 
-**Gate 2: Is auto-landing enabled?**
+**Gate 2: integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "false"**
+Say: "Skipping — auto-land is disabled. Integration branches are managed manually."
+Close this step immediately. Do nothing else.
 
-If integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "false":
-Check status for informational purposes only. Do NOT land.
-Log readiness state but take no action — manual landing required.
+**Gate 3: integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "true"**
+Proceed with landing check:
 
-```bash
-bd list --type=epic --status=open
-# For each epic:
-gt mq integration status <epic-id>
-# Log the output but DO NOT run gt mq integration land
-```
-
-**Gate 3: Auto-land enabled — proceed with landing**
-
-If integration_branch_refinery_enabled is "true" AND integration_branch_auto_land is "true":
-
-**Step 1: Find epics with integration branches**
 ```bash
 bd list --type=epic --status=open
 ```
@@ -458,8 +450,6 @@ For each epic, check its status:
 ```bash
 gt mq integration status <epic-id>
 ```
-
-**Step 2: Evaluate status output**
 
 The status shows:
 - `ready_to_land`: true when ALL conditions met (commits ahead, all children closed, no pending MRs)
