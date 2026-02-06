@@ -10,49 +10,6 @@ import (
 	"github.com/steveyegge/gastown/internal/beads"
 )
 
-func TestAddIntegrationBranchField(t *testing.T) {
-	tests := []struct {
-		name        string
-		description string
-		branchName  string
-		want        string
-	}{
-		{
-			name:        "empty description",
-			description: "",
-			branchName:  "integration/gt-epic",
-			want:        "integration_branch: integration/gt-epic",
-		},
-		{
-			name:        "simple description",
-			description: "Epic for authentication",
-			branchName:  "integration/gt-auth",
-			want:        "integration_branch: integration/gt-auth\nEpic for authentication",
-		},
-		{
-			name:        "existing integration_branch field",
-			description: "integration_branch: integration/old-epic\nSome description",
-			branchName:  "integration/new-epic",
-			want:        "integration_branch: integration/new-epic\nSome description",
-		},
-		{
-			name:        "multiline description",
-			description: "Line 1\nLine 2\nLine 3",
-			branchName:  "integration/gt-xyz",
-			want:        "integration_branch: integration/gt-xyz\nLine 1\nLine 2\nLine 3",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := addIntegrationBranchField(tt.description, tt.branchName)
-			if got != tt.want {
-				t.Errorf("addIntegrationBranchField() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestParseBranchName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -457,94 +414,6 @@ func TestFilterMRsByTarget_NoMRFields(t *testing.T) {
 	}
 }
 
-// Tests for configurable integration branch naming (Issue #104)
-
-func TestBuildIntegrationBranchName(t *testing.T) {
-	tests := []struct {
-		name     string
-		template string
-		epicID   string
-		want     string
-	}{
-		{
-			name:     "default template",
-			template: "",
-			epicID:   "RA-123",
-			want:     "integration/RA-123",
-		},
-		{
-			name:     "explicit default template",
-			template: "integration/{epic}",
-			epicID:   "PROJ-456",
-			want:     "integration/PROJ-456",
-		},
-		{
-			name:     "custom template with prefix",
-			template: "{prefix}/{epic}",
-			epicID:   "RA-123",
-			want:     "RA/RA-123",
-		},
-		{
-			name:     "complex template",
-			template: "feature/{prefix}/work/{epic}",
-			epicID:   "PROJ-789",
-			want:     "feature/PROJ/work/PROJ-789",
-		},
-		{
-			name:     "epic without hyphen",
-			template: "{prefix}/{epic}",
-			epicID:   "epicname",
-			want:     "epicname/epicname",
-		},
-		{
-			name:     "user variable left as-is without git config",
-			template: "{user}/{epic}",
-			epicID:   "RA-123",
-			// Note: {user} is replaced with git user.name if available,
-			// otherwise left as placeholder. In tests, it depends on git config.
-			want: "", // We'll check pattern instead
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildIntegrationBranchName(tt.template, tt.epicID)
-			if tt.want == "" {
-				// For user variable test, just check {epic} was replaced
-				if stringContains(got, "{epic}") {
-					t.Errorf("buildIntegrationBranchName() = %q, should have replaced {epic}", got)
-				}
-			} else if got != tt.want {
-				t.Errorf("buildIntegrationBranchName() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractEpicPrefix(t *testing.T) {
-	tests := []struct {
-		epicID string
-		want   string
-	}{
-		{"RA-123", "RA"},
-		{"PROJ-456", "PROJ"},
-		{"gt-auth-epic", "gt"},
-		{"epicname", "epicname"},
-		{"X-1", "X"},
-		{"-123", "-123"}, // No prefix before hyphen, return full string
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.epicID, func(t *testing.T) {
-			got := extractEpicPrefix(tt.epicID)
-			if got != tt.want {
-				t.Errorf("extractEpicPrefix(%q) = %q, want %q", tt.epicID, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestValidateBranchName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -878,6 +747,76 @@ func TestGetIntegrationBranchTemplate(t *testing.T) {
 			t.Errorf("got %q, want %q", got, defaultIntegrationBranchTemplate)
 		}
 	})
+}
+
+func TestIsReadyToLand(t *testing.T) {
+	tests := []struct {
+		name           string
+		aheadCount     int
+		childrenTotal  int
+		childrenClosed int
+		pendingMRCount int
+		want           bool
+	}{
+		{
+			name:           "all conditions met",
+			aheadCount:     3,
+			childrenTotal:  5,
+			childrenClosed: 5,
+			pendingMRCount: 0,
+			want:           true,
+		},
+		{
+			name:           "no commits ahead of main",
+			aheadCount:     0,
+			childrenTotal:  5,
+			childrenClosed: 5,
+			pendingMRCount: 0,
+			want:           false,
+		},
+		{
+			name:           "no children (empty epic)",
+			aheadCount:     3,
+			childrenTotal:  0,
+			childrenClosed: 0,
+			pendingMRCount: 0,
+			want:           false,
+		},
+		{
+			name:           "not all children closed",
+			aheadCount:     3,
+			childrenTotal:  5,
+			childrenClosed: 3,
+			pendingMRCount: 0,
+			want:           false,
+		},
+		{
+			name:           "pending MRs still open",
+			aheadCount:     3,
+			childrenTotal:  5,
+			childrenClosed: 5,
+			pendingMRCount: 2,
+			want:           false,
+		},
+		{
+			name:           "single child closed with commits",
+			aheadCount:     1,
+			childrenTotal:  1,
+			childrenClosed: 1,
+			pendingMRCount: 0,
+			want:           true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isReadyToLand(tt.aheadCount, tt.childrenTotal, tt.childrenClosed, tt.pendingMRCount)
+			if got != tt.want {
+				t.Errorf("isReadyToLand(%d, %d, %d, %d) = %v, want %v",
+					tt.aheadCount, tt.childrenTotal, tt.childrenClosed, tt.pendingMRCount, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestMRFilteringByLabel verifies that MRs are identified by their gt:merge-request

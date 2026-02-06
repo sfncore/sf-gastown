@@ -697,15 +697,7 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Ready to land if:
-	// 1. Has commits ahead of main (there's work to land)
-	// 2. Has children (not an empty epic)
-	// 3. All children are closed
-	// 4. No pending MRs (all submitted work is merged)
-	readyToLand := aheadCount > 0 &&
-		childrenTotal > 0 &&
-		childrenTotal == childrenClosed &&
-		len(pendingMRs) == 0
+	readyToLand := isReadyToLand(aheadCount, childrenTotal, childrenClosed, len(pendingMRs))
 
 	// Build output structure
 	output := IntegrationStatusOutput{
@@ -748,6 +740,15 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 
 	// Human-readable output
 	return printIntegrationStatus(&output)
+}
+
+// isReadyToLand determines if an integration branch is ready to land.
+// Ready when: has commits ahead of main, has children, all children closed, no pending MRs.
+func isReadyToLand(aheadCount, childrenTotal, childrenClosed, pendingMRCount int) bool {
+	return aheadCount > 0 &&
+		childrenTotal > 0 &&
+		childrenTotal == childrenClosed &&
+		pendingMRCount == 0
 }
 
 // printIntegrationStatus prints the integration status in human-readable format.
