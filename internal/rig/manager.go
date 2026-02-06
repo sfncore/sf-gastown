@@ -1,10 +1,10 @@
 package rig
 
 import (
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sfncore/sf-gastown/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -491,8 +491,7 @@ func (m *Manager) AddRig(opts AddRigOptions) (*Rig, error) {
 	}
 	// Create refinery hooks for patrol triggering (at refinery/ level, not rig/)
 	refineryPath := filepath.Dir(refineryRigPath)
-	townRoot := filepath.Dir(rigPath)
-	runtimeConfig := config.ResolveRoleAgentConfig("deacon", townRoot, rigPath)
+	runtimeConfig := config.ResolveRoleAgentConfig("refinery", m.townRoot, rigPath)
 	if err := m.createPatrolHooks(refineryPath, runtimeConfig); err != nil {
 		fmt.Printf("  Warning: Could not create refinery hooks: %v\n", err)
 	}
