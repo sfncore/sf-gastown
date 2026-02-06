@@ -191,6 +191,21 @@ func TestValidateBranchName(t *testing.T) {
 			branchName: "branch//name",
 			wantErr:    true,
 		},
+		{
+			name:       "contains question mark",
+			branchName: "branch?name",
+			wantErr:    true,
+		},
+		{
+			name:       "contains asterisk",
+			branchName: "branch*name",
+			wantErr:    true,
+		},
+		{
+			name:       "contains open bracket",
+			branchName: "branch[name",
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {

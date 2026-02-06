@@ -22,7 +22,7 @@ var defaultIntegrationBranchTemplate = beads.DefaultIntegrationBranchTemplate
 
 // invalidBranchCharsRegex matches characters that are invalid in git branch names.
 // Git branch names cannot contain: ~ ^ : \ space, .., @{, or end with .lock
-var invalidBranchCharsRegex = regexp.MustCompile(`[~^:\s\\]|\.\.|\.\.|@\{`)
+var invalidBranchCharsRegex = regexp.MustCompile(`[~^:\s\\?*\[]|\.\.|\.\.|@\{`)
 
 // buildIntegrationBranchName wraps beads.BuildIntegrationBranchName for local callers.
 func buildIntegrationBranchName(template, epicID string) string {

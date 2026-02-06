@@ -83,8 +83,8 @@ Auto-detection:
   - Priority: inherited from source issue
 
 Target branch auto-detection:
-  1. If --epic is specified: target integration/<epic>
-  2. If source issue has a parent epic with integration/<epic> branch: target it
+  1. If --epic is specified: target the integration branch for <epic> (using configured template)
+  2. If source issue has a parent epic with an integration branch: target it
   3. Otherwise: target main
 
 This ensures batch work on epics automatically flows to integration branches.
