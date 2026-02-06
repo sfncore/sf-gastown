@@ -1,6 +1,7 @@
 package beads
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -237,59 +238,144 @@ func (m *mockBranchChecker) RemoteBranchExists(remote, name string) (bool, error
 	return m.remoteBranches[key], nil
 }
 
+// mockIssueShower implements IssueShower for testing DetectIntegrationBranch.
+type mockIssueShower struct {
+	issues map[string]*Issue
+}
+
+func (m *mockIssueShower) Show(id string) (*Issue, error) {
+	issue, ok := m.issues[id]
+	if !ok {
+		return nil, fmt.Errorf("issue %s not found", id)
+	}
+	return issue, nil
+}
+
 func TestDetectIntegrationBranch(t *testing.T) {
-	// Create a mock beads that returns predefined issues.
-	// We can't easily mock Beads since it shells out to bd,
-	// so we test the logic through the exported functions instead.
-	// The integration of DetectIntegrationBranch with real Beads
-	// is covered by the manual verification steps.
-
-	// Test the metadata extraction logic that DetectIntegrationBranch relies on
-	t.Run("metadata extraction for detect logic", func(t *testing.T) {
-		// Simulate an epic with integration_branch metadata
-		desc := "integration_branch: feature/custom-branch"
-		branch := GetIntegrationBranchField(desc)
-		if branch != "feature/custom-branch" {
-			t.Errorf("expected 'feature/custom-branch', got %q", branch)
+	t.Run("child of epic with metadata and local branch", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{
+			"gt-task": {ID: "gt-task", Type: "task", Parent: "gt-epic"},
+			"gt-epic": {ID: "gt-epic", Type: "epic", Description: "integration_branch: custom/branch"},
+		}}
+		checker := &mockBranchChecker{
+			localBranches: map[string]bool{"custom/branch": true},
 		}
 
-		// Simulate an epic without metadata - fallback to naming convention
-		desc2 := "Some epic description"
-		branch2 := GetIntegrationBranchField(desc2)
-		if branch2 != "" {
-			t.Errorf("expected empty string, got %q", branch2)
+		got, err := DetectIntegrationBranch(shower, checker, "gt-task")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		// In this case, DetectIntegrationBranch would call BuildIntegrationBranchName
-		fallback := BuildIntegrationBranchName("", "gt-epic")
-		if fallback != "integration/gt-epic" {
-			t.Errorf("expected 'integration/gt-epic', got %q", fallback)
+		if got != "custom/branch" {
+			t.Errorf("got %q, want %q", got, "custom/branch")
 		}
 	})
 
-	// Test BranchChecker mock
-	t.Run("branch checker mock", func(t *testing.T) {
+	t.Run("child of epic without metadata falls back to naming on remote", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{
+			"gt-task": {ID: "gt-task", Type: "task", Parent: "gt-epic"},
+			"gt-epic": {ID: "gt-epic", Type: "epic", Description: "Some epic description"},
+		}}
 		checker := &mockBranchChecker{
-			localBranches: map[string]bool{
-				"integration/gt-epic": true,
-			},
-			remoteBranches: map[string]bool{
-				"origin/integration/gt-other": true,
-			},
+			remoteBranches: map[string]bool{"origin/integration/gt-epic": true},
 		}
 
-		exists, err := checker.BranchExists("integration/gt-epic")
-		if err != nil || !exists {
-			t.Errorf("BranchExists should return true for local branch")
+		got, err := DetectIntegrationBranch(shower, checker, "gt-task")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "integration/gt-epic" {
+			t.Errorf("got %q, want %q", got, "integration/gt-epic")
+		}
+	})
+
+	t.Run("nested parent chain task-to-subtask-to-epic", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{
+			"gt-sub":  {ID: "gt-sub", Type: "task", Parent: "gt-task"},
+			"gt-task": {ID: "gt-task", Type: "task", Parent: "gt-epic"},
+			"gt-epic": {ID: "gt-epic", Type: "epic", Description: "integration_branch: nested/branch"},
+		}}
+		checker := &mockBranchChecker{
+			localBranches: map[string]bool{"nested/branch": true},
 		}
 
-		exists, err = checker.BranchExists("integration/gt-missing")
-		if err != nil || exists {
-			t.Errorf("BranchExists should return false for missing branch")
+		got, err := DetectIntegrationBranch(shower, checker, "gt-sub")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "nested/branch" {
+			t.Errorf("got %q, want %q", got, "nested/branch")
+		}
+	})
+
+	t.Run("no epic in parent chain returns empty", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{
+			"gt-task": {ID: "gt-task", Type: "task", Parent: "gt-other"},
+			"gt-other": {ID: "gt-other", Type: "task", Parent: ""},
+		}}
+		checker := &mockBranchChecker{}
+
+		got, err := DetectIntegrationBranch(shower, checker, "gt-task")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("epic exists but no branch found anywhere", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{
+			"gt-task": {ID: "gt-task", Type: "task", Parent: "gt-epic"},
+			"gt-epic": {ID: "gt-epic", Type: "epic", Description: "No metadata here", Parent: ""},
+		}}
+		// No branches exist at all
+		checker := &mockBranchChecker{}
+
+		got, err := DetectIntegrationBranch(shower, checker, "gt-task")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("max depth exceeded returns empty", func(t *testing.T) {
+		issues := make(map[string]*Issue)
+		// Build a chain of 12 tasks (exceeds maxDepth of 10)
+		for i := 0; i < 12; i++ {
+			id := fmt.Sprintf("gt-%d", i)
+			parent := ""
+			if i < 11 {
+				parent = fmt.Sprintf("gt-%d", i+1)
+			}
+			issues[id] = &Issue{ID: id, Type: "task", Parent: parent}
+		}
+		// Put an epic at the very end (unreachable within depth 10)
+		issues["gt-11"].Type = "epic"
+		issues["gt-11"].Description = "integration_branch: deep/branch"
+
+		shower := &mockIssueShower{issues: issues}
+		checker := &mockBranchChecker{
+			localBranches: map[string]bool{"deep/branch": true},
 		}
 
-		exists, err = checker.RemoteBranchExists("origin", "integration/gt-other")
-		if err != nil || !exists {
-			t.Errorf("RemoteBranchExists should return true for remote branch")
+		got, err := DetectIntegrationBranch(shower, checker, "gt-0")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string (max depth exceeded)", got)
+		}
+	})
+
+	t.Run("issue not found propagates error", func(t *testing.T) {
+		shower := &mockIssueShower{issues: map[string]*Issue{}}
+		checker := &mockBranchChecker{}
+
+		_, err := DetectIntegrationBranch(shower, checker, "gt-missing")
+		if err == nil {
+			t.Fatal("expected error for missing issue, got nil")
 		}
 	})
 }

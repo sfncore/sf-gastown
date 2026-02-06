@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -739,6 +742,142 @@ func TestPolecatCleanupTimeoutConstant(t *testing.T) {
 	if expectedMaxCleanupWait != 5*time.Minute {
 		t.Errorf("expectedMaxCleanupWait = %v, want 5m", expectedMaxCleanupWait)
 	}
+}
+
+func TestGetRigGit(t *testing.T) {
+	t.Run("bare repo exists", func(t *testing.T) {
+		tmp := t.TempDir()
+		bareRepo := filepath.Join(tmp, ".repo.git")
+		if err := os.Mkdir(bareRepo, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		g, err := getRigGit(tmp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// NewGitWithDir for bare repos uses gitDir, workDir=""
+		// The returned Git should point at the bare repo path
+		if g == nil {
+			t.Fatal("expected non-nil Git")
+		}
+	})
+
+	t.Run("mayor/rig exists without bare repo", func(t *testing.T) {
+		tmp := t.TempDir()
+		mayorRig := filepath.Join(tmp, "mayor", "rig")
+		if err := os.MkdirAll(mayorRig, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		g, err := getRigGit(tmp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if g == nil {
+			t.Fatal("expected non-nil Git")
+		}
+	})
+
+	t.Run("neither exists returns error", func(t *testing.T) {
+		tmp := t.TempDir()
+
+		_, err := getRigGit(tmp)
+		if err == nil {
+			t.Fatal("expected error for empty directory")
+		}
+		if !stringContains(err.Error(), "no repo base found") {
+			t.Errorf("expected 'no repo base found' error, got: %v", err)
+		}
+	})
+
+	t.Run("bare repo takes precedence over mayor/rig", func(t *testing.T) {
+		tmp := t.TempDir()
+		bareRepo := filepath.Join(tmp, ".repo.git")
+		if err := os.Mkdir(bareRepo, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mayorRig := filepath.Join(tmp, "mayor", "rig")
+		if err := os.MkdirAll(mayorRig, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		g, err := getRigGit(tmp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if g == nil {
+			t.Fatal("expected non-nil Git")
+		}
+		// When bare repo exists, WorkDir() returns "" (bare repo mode)
+		if g.WorkDir() != "" {
+			t.Errorf("expected empty WorkDir for bare repo, got %q", g.WorkDir())
+		}
+	})
+}
+
+func TestGetIntegrationBranchTemplate(t *testing.T) {
+	t.Run("CLI override provided", func(t *testing.T) {
+		tmp := t.TempDir()
+		got := getIntegrationBranchTemplate(tmp, "custom/{epic}")
+		if got != "custom/{epic}" {
+			t.Errorf("got %q, want %q", got, "custom/{epic}")
+		}
+	})
+
+	t.Run("config has template", func(t *testing.T) {
+		tmp := t.TempDir()
+		settingsDir := filepath.Join(tmp, "settings")
+		if err := os.Mkdir(settingsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := map[string]interface{}{
+			"type":    "rig-settings",
+			"version": 1,
+			"merge_queue": map[string]interface{}{
+				"integration_branch_template": "{prefix}/{epic}",
+			},
+		}
+		data, _ := json.Marshal(cfg)
+		if err := os.WriteFile(filepath.Join(settingsDir, "config.json"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		got := getIntegrationBranchTemplate(tmp, "")
+		if got != "{prefix}/{epic}" {
+			t.Errorf("got %q, want %q", got, "{prefix}/{epic}")
+		}
+	})
+
+	t.Run("config exists but no template returns default", func(t *testing.T) {
+		tmp := t.TempDir()
+		settingsDir := filepath.Join(tmp, "settings")
+		if err := os.Mkdir(settingsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := map[string]interface{}{
+			"type":        "rig-settings",
+			"version":     1,
+			"merge_queue": map[string]interface{}{},
+		}
+		data, _ := json.Marshal(cfg)
+		if err := os.WriteFile(filepath.Join(settingsDir, "config.json"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		got := getIntegrationBranchTemplate(tmp, "")
+		if got != defaultIntegrationBranchTemplate {
+			t.Errorf("got %q, want %q", got, defaultIntegrationBranchTemplate)
+		}
+	})
+
+	t.Run("no config file returns default", func(t *testing.T) {
+		tmp := t.TempDir()
+		got := getIntegrationBranchTemplate(tmp, "")
+		if got != defaultIntegrationBranchTemplate {
+			t.Errorf("got %q, want %q", got, defaultIntegrationBranchTemplate)
+		}
+	})
 }
 
 // TestMRFilteringByLabel verifies that MRs are identified by their gt:merge-request

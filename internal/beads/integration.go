@@ -9,6 +9,12 @@ import (
 // Integration branch template constants
 const DefaultIntegrationBranchTemplate = "integration/{epic}"
 
+// IssueShower provides issue lookup without requiring a full Beads instance.
+// *Beads satisfies this interface, so existing callers need no changes.
+type IssueShower interface {
+	Show(id string) (*Issue, error)
+}
+
 // BranchChecker provides branch existence checks without importing the git package.
 // This avoids circular imports between beads and git.
 type BranchChecker interface {
@@ -138,7 +144,7 @@ func getGitUserName() string {
 // At each epic: reads integration_branch: metadata first, falls back to BuildIntegrationBranchName.
 // Checks branch existence via BranchChecker.
 // Returns the integration branch name or "" if not found.
-func DetectIntegrationBranch(bd *Beads, checker BranchChecker, issueID string) (string, error) {
+func DetectIntegrationBranch(bd IssueShower, checker BranchChecker, issueID string) (string, error) {
 	const maxDepth = 10
 	currentID := issueID
 
