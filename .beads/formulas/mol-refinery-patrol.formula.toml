@@ -31,9 +31,17 @@ Witness                    Refinery                      Git
 ```
 
 After successful merge, Refinery sends MERGED mail back to Witness so it can
-complete cleanup (nuke the polecat worktree)."""
+complete cleanup (nuke the polecat worktree).
+
+## IMPORTANT: Step Execution Order
+
+You MUST process steps in strict DAG order. Walk through each step sequentially,
+even when skipping. If the merge queue is empty, still visit process-branch,
+run-tests, handle-failures, merge-push, and loop-check in order — close each
+one with a brief reason (e.g. "Queue empty, nothing to process") before moving
+to the next. NEVER jump ahead in the DAG or close steps out of order."""
 formula = "mol-refinery-patrol"
-version = 8
+version = 9
 
 [vars]
 [vars.wisp_type]
@@ -424,47 +432,15 @@ id = "check-integration-branches"
 title = "Check integration branches for landing"
 needs = ["generate-summary"]
 description = """
-Check if any integration branches are ready to land.
-
 **Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
 **Config: integration_branch_auto_land = {{integration_branch_auto_land}}**
 
-**REQUIRED**: Before making any decision, you MUST state the config values out loud:
-"integration_branch_refinery_enabled = <value>, integration_branch_auto_land = <value>"
-Then follow the matching gate below.
+Read the two config values above, then:
 
-**Gate 1: integration_branch_refinery_enabled = "false"**
-Say: "Skipping — integration branch management is disabled."
-Close this step immediately. Do nothing else.
-
-**Gate 2: integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "false"**
-Say: "Skipping — auto-land is disabled. Integration branches are managed manually."
-Close this step immediately. Do nothing else.
-
-**Gate 3: integration_branch_refinery_enabled = "true" AND integration_branch_auto_land = "true"**
-Proceed with landing check:
-
-```bash
-bd list --type=epic --status=open
-```
-
-For each epic, check its status:
-```bash
-gt mq integration status <epic-id>
-```
-
-The status shows:
-- `ready_to_land`: true when ALL conditions met (commits ahead, all children closed, no pending MRs)
-
-If `ready_to_land: true`:
-```bash
-gt mq integration land <epic-id>
-```
-
-If `ready_to_land: false`: Do nothing, epic work is not yet complete.
-
-**CRITICAL**: Only land when ALL children are closed. Do NOT land just because
-the MQ is empty — there may be more waves of work to sling for this epic."""
+- If integration_branch_refinery_enabled = "false": Say "Integration branches disabled." Close step.
+- If integration_branch_auto_land = "false": Say "Auto-land disabled, nothing to do." Close step.
+- If BOTH are "true": Run `gt mq integration status <epic-id>` for each open epic.
+  Land only if `ready_to_land: true`. Never land partial epics."""
 
 [[steps]]
 id = "context-check"
