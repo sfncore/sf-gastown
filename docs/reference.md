@@ -83,6 +83,14 @@ Debug routing: `BD_DEBUG_ROUTING=1 bd show <id>`
   "max_workers": 5,
   "merge_queue": {
     "enabled": true,
+    "target_branch": "main",
+    "run_tests": true,
+    "test_command": "go test ./...",
+    "on_conflict": "assign_back",
+    "delete_merged_branches": true,
+    "retry_flaky_tests": 1,
+    "poll_interval": "30s",
+    "max_concurrent": 1,
     "integration_branch_polecat_enabled": true,
     "integration_branch_refinery_enabled": true,
     "integration_branch_template": "integration/{epic}",
@@ -91,16 +99,25 @@ Debug routing: `BD_DEBUG_ROUTING=1 bd show <id>`
 }
 ```
 
-**Integration branch fields:**
+**Merge queue fields:**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `enabled` | `bool` | `true` | Whether the merge queue is active |
+| `target_branch` | `string` | `"main"` | Default branch to merge into |
+| `run_tests` | `bool` | `true` | Run tests before merging |
+| `test_command` | `string` | `"go test ./..."` | Test command to run |
+| `on_conflict` | `string` | `"assign_back"` | Conflict strategy: `assign_back` or `auto_rebase` |
+| `delete_merged_branches` | `bool` | `true` | Delete source branches after merging |
+| `retry_flaky_tests` | `int` | `1` | Number of times to retry flaky tests |
+| `poll_interval` | `string` | `"30s"` | How often Refinery polls for new MRs |
+| `max_concurrent` | `int` | `1` | Maximum concurrent merges |
 | `integration_branch_polecat_enabled` | `*bool` | `true` | Polecats auto-source worktrees from integration branches |
 | `integration_branch_refinery_enabled` | `*bool` | `true` | `gt done` / `gt mq submit` auto-target integration branches |
 | `integration_branch_template` | `string` | `"integration/{epic}"` | Branch name template (`{epic}`, `{prefix}`, `{user}`) |
 | `integration_branch_auto_land` | `*bool` | `false` | Refinery patrol auto-lands when all children closed |
 
-See [Integration Branches](concepts/integration-branches.md) for full details.
+See [Integration Branches](concepts/integration-branches.md) for integration branch details.
 
 ### Runtime (`.runtime/` - gitignored)
 
