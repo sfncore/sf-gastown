@@ -33,7 +33,16 @@ Witness                    Refinery                      Git
 After successful merge, Refinery sends MERGED mail back to Witness so it can
 complete cleanup (nuke the polecat worktree).
 
-## IMPORTANT: Step Execution Order
+## CRITICAL: Read Step Instructions Before Acting
+
+Before executing ANY step, you MUST run `bd show <step-id>` and read the full
+description. Steps contain **Config:** values that override default behavior.
+If a config says to skip, you skip. If it specifies a command, you use that
+exact command — not your own assumption. Do NOT guess what a step requires
+based on the step title or your role knowledge. The step description is the
+source of truth.
+
+## Step Execution Order
 
 You MUST process steps in strict DAG order. Walk through each step sequentially,
 even when skipping. If the merge queue is empty, still visit process-branch,
@@ -41,7 +50,7 @@ run-tests, handle-failures, merge-push, and loop-check in order — close each
 one with a brief reason (e.g. "Queue empty, nothing to process") before moving
 to the next. NEVER jump ahead in the DAG or close steps out of order."""
 formula = "mol-refinery-patrol"
-version = 9
+version = 10
 
 [vars]
 wisp_type = "patrol"
