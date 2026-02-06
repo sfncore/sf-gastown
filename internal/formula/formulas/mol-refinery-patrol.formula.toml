@@ -45,12 +45,9 @@ source of truth.
 ## Step Execution Order
 
 You MUST process steps in strict DAG order. Walk through each step sequentially,
-even when skipping. If the merge queue is empty, still visit process-branch,
-run-tests, handle-failures, merge-push, and loop-check in order — close each
-one with a brief reason (e.g. "Queue empty, nothing to process") before moving
-to the next. NEVER jump ahead in the DAG or close steps out of order."""
+unless you are explicitly told to skip to a step."""
 formula = "mol-refinery-patrol"
-version = 10
+version = 11
 
 [vars]
 wisp_type = "patrol"
@@ -153,7 +150,7 @@ gt mq list <rig>
 The beads MQ tracks all pending merge requests. Do NOT rely on `git branch -r | grep polecat`
 as branches may exist without MR beads, or MR beads may exist for already-merged work.
 
-If queue empty, skip to context-check step.
+If queue empty, skip to "check-integration-branches" step.
 
 For each MR in the queue, verify the branch still exists:
 ```bash
