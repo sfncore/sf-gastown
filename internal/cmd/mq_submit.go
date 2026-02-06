@@ -134,8 +134,10 @@ func runMqSubmit(cmd *cobra.Command, args []string) error {
 	// Determine target branch
 	target := defaultBranch
 	if mqSubmitEpic != "" {
-		// Explicit --epic flag takes precedence
-		target = "integration/" + mqSubmitEpic
+		// Explicit --epic flag: resolve branch name via configured template
+		rigPath := filepath.Join(townRoot, rigName)
+		template := getIntegrationBranchTemplate(rigPath, "")
+		target = buildIntegrationBranchName(template, mqSubmitEpic)
 	} else {
 		// Auto-detect: check if source issue has a parent epic with an integration branch
 		// Only if refinery integration branch auto-targeting is enabled
