@@ -13,21 +13,61 @@ via patrol. The result is that an entire epic flows through the system as a
 coherent unit, from first sling to final land, without any manual branch
 targeting.
 
-## Quick Start
+## Workflow
 
-```bash
-# Create an integration branch for an epic
-gt mq integration create gt-auth-epic
+1. **Create the epic and its children.** Structure your work as an epic with
+   child tasks (or sub-epics) underneath. Set up dependencies between children
+   to define which can run in parallel and which must wait.
 
-# Check status (merged MRs, pending work, ready to land?)
-gt mq integration status gt-auth-epic
+2. **Create the integration branch.** This is the shared branch where all child
+   work accumulates.
+   ```bash
+   gt mq integration create gt-auth-epic
+   ```
 
-# Land to main when all work is merged
-gt mq integration land gt-auth-epic
-```
+3. **Create a convoy to track the work.** The convoy gives you a single dashboard
+   for the entire epic's progress.
+   ```bash
+   gt convoy create "Auth overhaul" gt-auth-tokens gt-auth-sessions gt-auth-middleware
+   ```
 
-That's it. MRs from child issues auto-target the integration branch. When all
-children close, land everything at once.
+4. **Sling the first wave.** Identify children with no blockers and sling them
+   to the rig. Use `--no-convoy` since the tracking convoy already exists.
+   ```bash
+   gt sling gt-auth-tokens gastown --no-convoy
+   gt sling gt-auth-sessions gastown --no-convoy
+   ```
+
+5. **Polecats process the work.** Each polecat spawns its worktree from the
+   integration branch, so it starts with any sibling work that has already
+   landed there. When a polecat finishes, it submits a merge request.
+
+6. **Refinery merges to the integration branch.** Instead of merging to main,
+   the Refinery merges each MR into the integration branch and marks the child
+   task as complete.
+
+7. **Track progress via the convoy.** The convoy status updates each time the
+   Refinery completes a task.
+   ```bash
+   gt convoy status hq-cv-abc
+   ```
+
+8. **Sling the next wave.** When a wave completes and its dependent children
+   unblock, sling the next batch. Those polecats will start from the integration
+   branch — which now contains all the work from the preceding wave.
+   ```bash
+   gt sling gt-auth-middleware gastown --no-convoy
+   ```
+
+9. **Land when complete.** When all children under the epic are closed, the
+   integration branch is ready to land. If `integration_branch_auto_land` is
+   enabled, the Refinery does this automatically during patrol. Otherwise,
+   land manually:
+   ```bash
+   gt mq integration land gt-auth-epic
+   ```
+   This merges the integration branch to main as a single atomic commit,
+   deletes the branch, and closes the epic.
 
 ## Concept
 
