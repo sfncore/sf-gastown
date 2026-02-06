@@ -437,8 +437,12 @@ Read the two config values above, then:
 
 - If integration_branch_refinery_enabled = "false": Say "Integration branches disabled." Close step.
 - If integration_branch_auto_land = "false": Say "Auto-land disabled, nothing to do." Close step.
-- If BOTH are "true": Run `gt mq integration status <epic-id>` for each open epic.
-  Land only if `ready_to_land: true`. Never land partial epics."""
+- If BOTH are "true":
+  1. `bd list --type=epic --status=open` to find epics
+  2. `gt mq integration status <epic-id>` for each epic
+  3. If `ready_to_land: true`: run `gt mq integration land <epic-id>`
+  4. If `ready_to_land: false`: do nothing, epic work is incomplete
+  Never land partial epics — ALL children must be closed first."""
 
 [[steps]]
 id = "context-check"
