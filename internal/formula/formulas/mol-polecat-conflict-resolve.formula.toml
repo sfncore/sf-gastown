@@ -40,7 +40,7 @@ fails. They are identified by:
 | Tests fail after resolve | Fix them before pushing |
 | Resolution unclear | Read original issue for context |"""
 formula = "mol-polecat-conflict-resolve"
-version = 1
+version = 2
 
 [[steps]]
 id = "load-task"

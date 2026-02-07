@@ -41,7 +41,7 @@ beads created from it. Use `bd ready` to find them - do NOT read this file direc
 | Context filling | Use gt handoff to cycle to fresh session |
 | Unsure what to do | Mail Witness, don't guess |"""
 formula = "mol-polecat-work"
-version = 4
+version = 5
 
 [[steps]]
 id = "load-context"
