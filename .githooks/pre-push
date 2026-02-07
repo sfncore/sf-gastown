@@ -1,19 +1,43 @@
-#!/usr/bin/env sh
-# bd-shim v1
-# bd-hooks-version: 0.49.3
-#
-# bd (beads) pre-push hook - thin shim
-#
-# This shim delegates to 'bd hooks run pre-push' which contains
-# the actual hook logic. This pattern ensures hook behavior is always
-# in sync with the installed bd version - no manual updates needed.
+#!/bin/bash
+# Block PRs by preventing pushes to arbitrary feature branches.
+# Gas Town agents push to main (crew) or polecat/* branches (polecats).
+# PRs are for external contributors only.
 
-# Check if bd is available
-if ! command -v bd >/dev/null 2>&1; then
-    echo "Warning: bd command not found in PATH, skipping pre-push hook" >&2
-    echo "  Install bd: brew install beads" >&2
-    echo "  Or add bd to your PATH" >&2
-    exit 0
-fi
+# Allowed patterns:
+#   main, beads-sync  - Direct work branches
+#   polecat/*         - Polecat working branches (Refinery merges these)
 
-exec bd hooks run pre-push "$@"
+while read local_ref local_sha remote_ref remote_sha; do
+  # Skip tags - they're allowed for releases
+  if [[ "$remote_ref" == refs/tags/* ]]; then
+    continue
+  fi
+
+  branch="${remote_ref#refs/heads/}"
+
+  case "$branch" in
+    main|beads-sync|polecat/*)
+      # Allowed branches
+      ;;
+    *)
+      # Allow feature branches when contributing to upstream (fork workflow).
+      # If an 'upstream' remote exists, this is a contribution setup where
+      # feature branches are needed for PRs. See: #848
+      if ! git remote get-url upstream &>/dev/null; then
+        echo "ERROR: Invalid branch for Gas Town agents."
+        echo ""
+        echo "Blocked push to: $branch"
+        echo ""
+        echo "Allowed branches:"
+        echo "  main        - Crew workers push here directly"
+        echo "  polecat/*   - Polecat working branches"
+        echo "  beads-sync  - Beads synchronization"
+        echo ""
+        echo "Do NOT create PRs. Push to main or let Refinery merge polecat work."
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+exit 0
