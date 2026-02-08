@@ -2,16 +2,16 @@
 package dog
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
 	"errors"
 	"fmt"
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/runtime"
 	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/sfncore/sf-gastown/internal/runtime"
 	"github.com/sfncore/sf-gastown/internal/session"
 	"github.com/sfncore/sf-gastown/internal/tmux"
 	"github.com/sfncore/sf-gastown/internal/workspace"
@@ -121,7 +121,7 @@ func (m *SessionManager) Start(dogName string, opts SessionStartOptions) error {
 		Sender:    "deacon",
 		Topic:     "assigned",
 	})
-	initialPrompt := fmt.Sprintf("I am Dog %s.%s Check mail for work: `" + cli.Name() + " mail inbox`. Execute assigned formula/bead. When done, send DOG_DONE mail to deacon/ and return to idle.", dogName, workInfo)
+	initialPrompt := fmt.Sprintf("I am Dog %s.%s Check mail for work: `"+cli.Name()+" mail inbox`. Execute assigned formula/bead. When done, send DOG_DONE mail to deacon/ and return to idle.", dogName, workInfo)
 
 	// Build startup command
 	startupCmd, err := config.BuildAgentStartupCommandWithAgentOverride("dog", "", m.townRoot, "", beacon+"\n"+initialPrompt, opts.AgentOverride)
@@ -157,6 +157,9 @@ func (m *SessionManager) Start(dogName string, opts SessionStartOptions) error {
 	_ = m.tmux.AcceptBypassPermissionsWarning(sessionID)
 
 	time.Sleep(constants.ShutdownNotifyDelay)
+
+	// Run startup fallback for non-Claude agents (OpenCode, etc.)
+	_ = runtime.RunStartupFallback(m.tmux, sessionID, "dog", runtimeConfig)
 
 	// Verify session survived startup
 	running, err = m.tmux.HasSession(sessionID)
