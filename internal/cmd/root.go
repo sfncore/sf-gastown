@@ -7,20 +7,20 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/sfncore/sf-gastown/internal/cli"
 	"github.com/sfncore/sf-gastown/internal/config"
 	"github.com/sfncore/sf-gastown/internal/style"
 	"github.com/sfncore/sf-gastown/internal/ui"
 	"github.com/sfncore/sf-gastown/internal/version"
 	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "gt", // Updated in init() based on GT_COMMAND
-	Short:   "Gas Town - Multi-agent workspace manager",
-	Version: Version,
-	Long:    "", // Updated in init() based on GT_COMMAND
+	Use:               "gt", // Updated in init() based on GT_COMMAND
+	Short:             "Gas Town - Multi-agent workspace manager",
+	Version:           Version,
+	Long:              "", // Updated in init() based on GT_COMMAND
 	PersistentPreRunE: persistentPreRun,
 }
 
@@ -38,29 +38,29 @@ across distributed teams of AI agents working on shared codebases.`, cmdName)
 // NOTE: Gas Town has migrated to Dolt for beads storage. The bd version
 // check is obsolete. Exempt all common commands.
 var beadsExemptCommands = map[string]bool{
-	"version":    true,
-	"help":       true,
-	"completion": true,
-	"crew":       true,
-	"polecat":    true,
-	"witness":    true,
-	"refinery":   true,
-	"status":     true,
-	"mail":       true,
-	"hook":       true,
-	"prime":      true,
-	"nudge":      true,
-	"seance":     true,
-	"doctor":     true,
-	"dolt":       true,
-	"handoff":    true,
-	"costs":      true,
-	"feed":       true,
-	"rig":        true,
-	"config":     true,
-	"install":    true,
-	"tap":        true,
-	"dnd":        true,
+	"version":       true,
+	"help":          true,
+	"completion":    true,
+	"crew":          true,
+	"polecat":       true,
+	"witness":       true,
+	"refinery":      true,
+	"status":        true,
+	"mail":          true,
+	"hook":          true,
+	"prime":         true,
+	"nudge":         true,
+	"seance":        true,
+	"doctor":        true,
+	"dolt":          true,
+	"handoff":       true,
+	"costs":         true,
+	"feed":          true,
+	"rig":           true,
+	"config":        true,
+	"install":       true,
+	"tap":           true,
+	"dnd":           true,
 	"krc":           true, // KRC doesn't require beads
 	"run-migration": true, // Migration orchestrator handles its own beads checks
 }
@@ -225,6 +225,12 @@ func checkStaleBinaryWarning() {
 		fmt.Fprintf(os.Stderr, "%s %s\n", style.WarningPrefix, msg)
 		fmt.Fprintf(os.Stderr, "    %s Run 'make install' in gastown repo to update\n", style.ArrowPrefix)
 	}
+}
+
+// Root returns the root cobra command for documentation generation.
+// This allows external tools (like doc generators) to access the command tree.
+func Root() *cobra.Command {
+	return rootCmd
 }
 
 // Execute runs the root command and returns an exit code.
