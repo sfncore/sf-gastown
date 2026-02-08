@@ -220,7 +220,7 @@ func checkDependencyCycles(deps map[string][]string) error {
 	var visit func(id string) error
 	visit = func(id string) error {
 		if inStack[id] {
-			return fmt.Errorf("cycle detected involving: %s", id)
+			return fmt.Errorf("cycle detected involving step: %s", id)
 		}
 		if visited[id] {
 			return nil

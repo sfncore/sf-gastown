@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/beads"
 )
 
 func TestFilterMRsByTarget(t *testing.T) {
