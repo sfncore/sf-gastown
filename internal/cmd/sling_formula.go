@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
 	"encoding/json"
 	"fmt"
+	"github.com/sfncore/sf-gastown/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,9 +91,10 @@ func runSlingFormula(args []string) error {
 	// Resolve target agent and pane
 	var targetAgent string
 	var targetPane string
-	var delayedDogInfo *DogDispatchInfo // For delayed session start after hook is set
-	var formulaWorkDir string            // Working directory for bd cook/wisp (routes to correct rig beads)
-	var isSelfSling bool                 // True if slinging to self (skip nudge - agent already knows)
+	var delayedDogInfo *DogDispatchInfo        // For delayed session start after hook is set
+	var formulaWorkDir string                  // Working directory for bd cook/wisp (routes to correct rig beads)
+	var isSelfSling bool                       // True if slinging to self (skip nudge - agent already knows)
+	var spawnedPolecatInfo *SpawnedPolecatInfo // Track spawned polecat for deferred session start
 
 	if target != "" {
 		// Resolve "." to current agent identity (like git's "." meaning current directory)
@@ -151,8 +152,9 @@ func runSlingFormula(args []string) error {
 				if spawnErr != nil {
 					return fmt.Errorf("spawning polecat: %w", spawnErr)
 				}
+				spawnedPolecatInfo = spawnInfo
 				targetAgent = spawnInfo.AgentID()
-				targetPane = spawnInfo.Pane
+				// Pane will be set after StartSession() is called post-hook
 				formulaWorkDir = spawnInfo.ClonePath // Route bd commands to rig beads
 
 				if !slingNoBoot {
@@ -281,6 +283,16 @@ func runSlingFormula(args []string) error {
 		targetPane = pane
 	}
 
+	// Start spawned polecat session now that hook is set.
+	// This ensures polecat sees the molecule when gt prime runs on session start.
+	if spawnedPolecatInfo != nil {
+		pane, err := spawnedPolecatInfo.StartSession()
+		if err != nil {
+			return fmt.Errorf("starting polecat session: %w", err)
+		}
+		targetPane = pane
+	}
+
 	// Step 4: Nudge to start (graceful if no tmux)
 	// Skip for self-sling - agent is currently processing the sling command and will see
 	// the hooked work on next turn. Nudging would inject text while agent is busy.
@@ -300,9 +312,9 @@ func runSlingFormula(args []string) error {
 
 	var prompt string
 	if slingArgs != "" {
-		prompt = fmt.Sprintf("Formula %s slung. Args: %s. Run `" + cli.Name() + " hook` to see your hook, then execute using these args.", formulaName, slingArgs)
+		prompt = fmt.Sprintf("Formula %s slung. Args: %s. Run `"+cli.Name()+" hook` to see your hook, then execute using these args.", formulaName, slingArgs)
 	} else {
-		prompt = fmt.Sprintf("Formula %s slung. Run `" + cli.Name() + " hook` to see your hook, then execute the steps.", formulaName)
+		prompt = fmt.Sprintf("Formula %s slung. Run `"+cli.Name()+" hook` to see your hook, then execute the steps.", formulaName)
 	}
 	t := tmux.NewTmux()
 	if err := t.NudgePane(targetPane, prompt); err != nil {
