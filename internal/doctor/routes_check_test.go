@@ -3,6 +3,7 @@ package doctor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -304,6 +305,139 @@ func TestRoutesCheck_CorruptedRoutesJsonl(t *testing.T) {
 		result := check.Run(ctx)
 		if result.Status != StatusOK {
 			t.Errorf("expected StatusOK after fix, got %v: %s", result.Status, result.Message)
+		}
+	})
+}
+
+func TestRoutesCheck_FixRemovesInvalidRoutes(t *testing.T) {
+	t.Run("fix removes routes with non-existent paths", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create .beads directory
+		beadsDir := filepath.Join(tmpDir, ".beads")
+		if err := os.MkdirAll(beadsDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create rig directory structure for one valid route
+		rigPath := filepath.Join(tmpDir, "myrig", "mayor", "rig", ".beads")
+		if err := os.MkdirAll(rigPath, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create routes.jsonl with valid route, invalid route (non-existent path), and town routes
+		routesPath := filepath.Join(beadsDir, "routes.jsonl")
+		routesContent := `{"prefix": "hq-", "path": "."}
+{"prefix": "my-", "path": "myrig/mayor/rig"}
+{"prefix": "old-", "path": "oldrig/mayor/rig"}
+`
+		if err := os.WriteFile(routesPath, []byte(routesContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create mayor directory
+		if err := os.MkdirAll(filepath.Join(tmpDir, "mayor"), 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		check := NewRoutesCheck()
+		ctx := &CheckContext{TownRoot: tmpDir}
+
+		// Verify the check detects the invalid route
+		result := check.Run(ctx)
+		if result.Status != StatusWarning {
+			t.Errorf("expected StatusWarning, got %v: %s", result.Status, result.Message)
+		}
+
+		// Run fix
+		if err := check.Fix(ctx); err != nil {
+			t.Fatalf("Fix failed: %v", err)
+		}
+
+		// Verify routes.jsonl has removed the invalid route
+		content, err := os.ReadFile(routesPath)
+		if err != nil {
+			t.Fatalf("Failed to read routes.jsonl: %v", err)
+		}
+
+		contentStr := string(content)
+		// Should have hq-, hq-cv-, and my- routes, but NOT old- route
+		// Order may vary, so check presence/absence of key routes
+		if !strings.Contains(contentStr, `"prefix":"hq-","path":"."`) {
+			t.Errorf("missing hq- route: %s", contentStr)
+		}
+		if !strings.Contains(contentStr, `"prefix":"hq-cv-","path":"."`) {
+			t.Errorf("missing hq-cv- route: %s", contentStr)
+		}
+		if !strings.Contains(contentStr, `"prefix":"my-","path":"myrig/mayor/rig"`) {
+			t.Errorf("missing my- route: %s", contentStr)
+		}
+		if strings.Contains(contentStr, `"prefix":"old-"`) {
+			t.Errorf("old- route should have been removed: %s", contentStr)
+		}
+
+		// Verify the check now passes
+		result = check.Run(ctx)
+		if result.Status != StatusOK {
+			t.Errorf("expected StatusOK after fix, got %v: %s", result.Status, result.Message)
+		}
+	})
+
+	t.Run("fix preserves all valid routes", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create .beads directory
+		beadsDir := filepath.Join(tmpDir, ".beads")
+		if err := os.MkdirAll(beadsDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create rig directory structures for multiple valid routes
+		rig1Path := filepath.Join(tmpDir, "rig1", "mayor", "rig", ".beads")
+		rig2Path := filepath.Join(tmpDir, "rig2", "mayor", "rig", ".beads")
+		if err := os.MkdirAll(rig1Path, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(rig2Path, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create routes.jsonl with valid routes and town route
+		routesPath := filepath.Join(beadsDir, "routes.jsonl")
+		routesContent := `{"prefix": "r1-", "path": "rig1/mayor/rig"}
+{"prefix": "r2-", "path": "rig2/mayor/rig"}
+`
+		if err := os.WriteFile(routesPath, []byte(routesContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create mayor directory
+		if err := os.MkdirAll(filepath.Join(tmpDir, "mayor"), 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		check := NewRoutesCheck()
+		ctx := &CheckContext{TownRoot: tmpDir}
+
+		// Run fix
+		if err := check.Fix(ctx); err != nil {
+			t.Fatalf("Fix failed: %v", err)
+		}
+
+		// Verify routes.jsonl contains all routes plus town routes
+		content, err := os.ReadFile(routesPath)
+		if err != nil {
+			t.Fatalf("Failed to read routes.jsonl: %v", err)
+		}
+
+		contentStr := string(content)
+		// Should have both rig routes plus town routes
+		if contentStr != `{"prefix":"r1-","path":"rig1/mayor/rig"}
+{"prefix":"r2-","path":"rig2/mayor/rig"}
+{"prefix":"hq-","path":"."}
+{"prefix":"hq-cv-","path":"."}
+` {
+			t.Errorf("unexpected routes.jsonl content: %s", contentStr)
 		}
 	})
 }
