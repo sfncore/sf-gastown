@@ -1153,6 +1153,14 @@ func fillRuntimeDefaults(rc *RuntimeConfig) *RuntimeConfig {
 		}
 	}
 
+	// Auto-detect Provider from Command if not explicitly set.
+	// This ensures custom agents with commands like "opencode" get the correct
+	// provider, which is needed for normalizeRuntimeConfig to populate hooks,
+	// dirs, and process names correctly.
+	if result.Provider == "" {
+		result.Provider = detectProviderFromCommand(result.Command)
+	}
+
 	// Apply defaults for required fields
 	if result.Command == "" {
 		result.Command = "claude"
@@ -1447,7 +1455,7 @@ func BuildStartupCommandWithAgentOverride(envVars map[string]string, rigPath, pr
 	var townRoot string
 
 	// Extract role from envVars for role-based agent resolution (when no override)
-	role := extractSimpleRole(envVars["GT_ROLE"])
+	role := ExtractSimpleRole(envVars["GT_ROLE"])
 
 	if rigPath != "" {
 		townRoot = filepath.Dir(rigPath)

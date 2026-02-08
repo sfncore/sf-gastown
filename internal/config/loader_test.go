@@ -208,17 +208,17 @@ func TestRigSettingsWithCustomMergeQueue(t *testing.T) {
 		Type:    "rig-settings",
 		Version: 1,
 		MergeQueue: &MergeQueueConfig{
-			Enabled:              true,
-			TargetBranch:         "develop",
+			Enabled:                          true,
+			TargetBranch:                     "develop",
 			IntegrationBranchPolecatEnabled:  boolPtr(false),
 			IntegrationBranchRefineryEnabled: boolPtr(false),
-			OnConflict:           OnConflictAutoRebase,
-			RunTests:             true,
-			TestCommand:          "make test",
-			DeleteMergedBranches: false,
-			RetryFlakyTests:      3,
-			PollInterval:         "1m",
-			MaxConcurrent:        2,
+			OnConflict:                       OnConflictAutoRebase,
+			RunTests:                         true,
+			TestCommand:                      "make test",
+			DeleteMergedBranches:             false,
+			RetryFlakyTests:                  3,
+			PollInterval:                     "1m",
+			MaxConcurrent:                    2,
 		},
 	}
 
@@ -2349,6 +2349,120 @@ func TestFillRuntimeDefaults(t *testing.T) {
 			t.Errorf("Tmux.ReadyDelayMs should be 0 (unfilled), got %d", result.Tmux.ReadyDelayMs)
 		}
 	})
+
+	// Provider auto-detection tests for custom agents
+	t.Run("provider auto-detected from opencode command", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Provider: "", // Not set
+			Command:  "opencode",
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Provider != "opencode" {
+			t.Errorf("Provider: got %q, want %q - should be auto-detected from command", result.Provider, "opencode")
+		}
+	})
+
+	t.Run("provider auto-detected from claude command", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Provider: "", // Not set
+			Command:  "claude",
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Provider != "claude" {
+			t.Errorf("Provider: got %q, want %q - should be auto-detected from command", result.Provider, "claude")
+		}
+	})
+
+	t.Run("provider not overwritten when explicitly set", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Provider: "custom-provider",
+			Command:  "opencode",
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Provider != "custom-provider" {
+			t.Errorf("Provider: got %q, want %q - should not overwrite explicit value", result.Provider, "custom-provider")
+		}
+	})
+
+	t.Run("provider auto-detected from path command", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Provider: "", // Not set
+			Command:  "/usr/local/bin/opencode",
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Provider != "opencode" {
+			t.Errorf("Provider: got %q, want %q - should be auto-detected from command path", result.Provider, "opencode")
+		}
+	})
+
+	t.Run("opencode command gets hooks populated via provider", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Provider: "", // Not set - will be auto-detected
+			Command:  "opencode",
+			Hooks:    nil, // Not set
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		// Provider should be auto-detected
+		if result.Provider != "opencode" {
+			t.Errorf("Provider: got %q, want %q", result.Provider, "opencode")
+		}
+		// Hooks should be auto-filled for opencode
+		if result.Hooks == nil {
+			t.Error("Hooks should be auto-filled for opencode command")
+		} else if result.Hooks.Provider != "opencode" {
+			t.Errorf("Hooks.Provider: got %q, want %q", result.Hooks.Provider, "opencode")
+		}
+	})
+}
+
+// TestDetectProviderFromCommand tests the provider detection from command paths.
+func TestDetectProviderFromCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		command  string
+		expected string
+	}{
+		{"empty command returns empty", "", ""},
+		{"claude command", "claude", "claude"},
+		{"opencode command", "opencode", "opencode"},
+		{"gemini command", "gemini", "gemini"},
+		{"codex command", "codex", "codex"},
+		{"cursor command", "cursor", "cursor"},
+		{"auggie command", "auggie", "auggie"},
+		{"amp command", "amp", "amp"},
+		{"unknown command", "unknown", ""},
+		{"claude with path", "/usr/bin/claude", "claude"},
+		{"opencode with path", "/usr/local/bin/opencode", "opencode"},
+		{"path with spaces", "/path/to/claude", "claude"},
+		{"relative path", "./opencode", "opencode"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := detectProviderFromCommand(tt.command)
+			if result != tt.expected {
+				t.Errorf("detectProviderFromCommand(%q) = %q, want %q", tt.command, result, tt.expected)
+			}
+		})
+	}
 }
 
 // TestLookupAgentConfigPreservesCustomFields verifies that custom agents
