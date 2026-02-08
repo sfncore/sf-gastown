@@ -411,23 +411,77 @@ Verify work is complete and ready for merge queue.
 **Note:** Do NOT close the issue. The Refinery will close it after successful merge.
 This enables conflict-resolution retries without reopening closed issues.
 
-**1. Verify the issue shows your work:**
+**Pre-flight Checks - MUST complete before `gt done`:**
+
+**1. Check parent issue/epic for code location rules:**
+```bash
+# Check if your issue depends on an epic
+bd show {{issue}}
+# Look for "Depends on" or "Parent" relationships
+
+# If there's a parent epic, read its description for special instructions
+bd show <parent-epic-id>
+# Look for: code location rules, naming conventions, or special requirements
+```
+Common rules to watch for:
+- "All changes must be in `src/foo/` directory"
+- "Do not modify files in `vendor/`"
+- "Must add tests in `tests/integration/``
+
+**2. Verify code is in correct directory:**
+```bash
+# Check what files you modified
+git diff --name-only origin/{{base_branch}}...HEAD
+
+# Verify all modified files are in appropriate locations
+# Look for:
+# - Files scattered across wrong directories
+# - Changes to generated files (vendor/, dist/, etc.)
+# - Test files in wrong locations
+```
+If you find files in wrong places:
+- Move them to correct locations
+- Commit the moves
+- Re-verify with `git diff --name-only`
+
+**3. Confirm branch was pushed to remote:**
+```bash
+# Check if local branch exists on remote
+git branch -vv
+# Look for: `* polecat/xyz       abcdef [origin/polecat/xyz]` (has upstream)
+
+# If no upstream shown, push the branch:
+git push -u origin $(git branch --show-current)
+
+# Verify the push succeeded
+git branch -vv
+```
+
+**4. Verify work is complete:**
 ```bash
 bd show {{issue}}
 # Status should still be 'in_progress' (you're working on it)
 ```
 
-**2. Add completion notes:**
+**5. Add completion notes:**
 ```bash
 bd update {{issue}} --notes "Implemented: <brief summary of what was done>"
 ```
 
-**3. Sync beads:**
+**6. Sync beads:**
 ```bash
 bd sync
 ```
 
-**Exit criteria:** Issue updated with completion notes, beads synced."""
+**IMPORTANT:** Do NOT create a GitHub PR manually. `gt done` handles submission via the merge queue automatically.
+
+**Exit criteria:**
+- Parent issue/epic checked for special instructions
+- All code in correct directories
+- Branch pushed to origin
+- Issue updated with completion notes
+- Beads synced
+- Ready for `gt done`"""
 
 [[steps]]
 id = "submit-and-exit"
