@@ -2437,6 +2437,265 @@ func TestFillRuntimeDefaults(t *testing.T) {
 	})
 }
 
+// TestFillRuntimeDefaults_TmuxAutoFill_OpenCode verifies that opencode command
+// gets appropriate Tmux auto-fill values when no Tmux config is provided.
+func TestFillRuntimeDefaults_TmuxAutoFill_OpenCode(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "opencode",
+		// No Tmux config provided
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Tmux == nil {
+		t.Fatal("Tmux should be auto-filled for opencode command")
+	}
+	if result.Tmux.ReadyDelayMs != 8000 {
+		t.Errorf("Tmux.ReadyDelayMs: got %d, want %d", result.Tmux.ReadyDelayMs, 8000)
+	}
+	if len(result.Tmux.ProcessNames) != 2 {
+		t.Errorf("Tmux.ProcessNames length: got %d, want %d", len(result.Tmux.ProcessNames), 2)
+	} else {
+		if result.Tmux.ProcessNames[0] != "opencode" {
+			t.Errorf("Tmux.ProcessNames[0]: got %q, want %q", result.Tmux.ProcessNames[0], "opencode")
+		}
+		if result.Tmux.ProcessNames[1] != "node" {
+			t.Errorf("Tmux.ProcessNames[1]: got %q, want %q", result.Tmux.ProcessNames[1], "node")
+		}
+	}
+}
+
+// TestFillRuntimeDefaults_TmuxAutoFill_Claude verifies that claude command
+// gets appropriate Tmux auto-fill values when no Tmux config is provided.
+func TestFillRuntimeDefaults_TmuxAutoFill_Claude(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "claude",
+		// No Tmux config provided
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Tmux == nil {
+		t.Fatal("Tmux should be auto-filled for claude command")
+	}
+	if result.Tmux.ReadyDelayMs != 10000 {
+		t.Errorf("Tmux.ReadyDelayMs: got %d, want %d", result.Tmux.ReadyDelayMs, 10000)
+	}
+	if result.Tmux.ReadyPromptPrefix != "❯ " {
+		t.Errorf("Tmux.ReadyPromptPrefix: got %q, want %q", result.Tmux.ReadyPromptPrefix, "❯ ")
+	}
+	if len(result.Tmux.ProcessNames) != 1 {
+		t.Errorf("Tmux.ProcessNames length: got %d, want %d", len(result.Tmux.ProcessNames), 1)
+	} else if result.Tmux.ProcessNames[0] != "node" {
+		t.Errorf("Tmux.ProcessNames[0]: got %q, want %q", result.Tmux.ProcessNames[0], "node")
+	}
+}
+
+// TestFillRuntimeDefaults_TmuxPreserved verifies that explicit Tmux config
+// values are preserved and NOT overwritten by auto-fill.
+func TestFillRuntimeDefaults_TmuxPreserved(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "claude",
+		Tmux: &RuntimeTmuxConfig{
+			ReadyDelayMs:      5000,
+			ReadyPromptPrefix: "custom> ",
+			ProcessNames:      []string{"custom-process"},
+		},
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Tmux == nil {
+		t.Fatal("Tmux should not be nil")
+	}
+	if result.Tmux.ReadyDelayMs != 5000 {
+		t.Errorf("Tmux.ReadyDelayMs: got %d, want %d (original value should be preserved)", result.Tmux.ReadyDelayMs, 5000)
+	}
+	if result.Tmux.ReadyPromptPrefix != "custom> " {
+		t.Errorf("Tmux.ReadyPromptPrefix: got %q, want %q (original value should be preserved)", result.Tmux.ReadyPromptPrefix, "custom> ")
+	}
+	if len(result.Tmux.ProcessNames) != 1 || result.Tmux.ProcessNames[0] != "custom-process" {
+		t.Errorf("Tmux.ProcessNames: got %v, want %v (original value should be preserved)", result.Tmux.ProcessNames, []string{"custom-process"})
+	}
+}
+
+// TestFillRuntimeDefaults_TmuxAutoFill_UnknownCommand verifies that unknown
+// commands get appropriate defaults based on the command name.
+func TestFillRuntimeDefaults_TmuxAutoFill_UnknownCommand(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "my-agent",
+		// No Tmux config provided
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Tmux == nil {
+		t.Fatal("Tmux should be auto-filled for unknown command")
+	}
+	// Unknown providers get ReadyDelayMs=0
+	if result.Tmux.ReadyDelayMs != 0 {
+		t.Errorf("Tmux.ReadyDelayMs: got %d, want %d", result.Tmux.ReadyDelayMs, 0)
+	}
+	// ProcessNames should default to the command basename
+	if len(result.Tmux.ProcessNames) != 1 {
+		t.Errorf("Tmux.ProcessNames length: got %d, want %d", len(result.Tmux.ProcessNames), 1)
+	} else if result.Tmux.ProcessNames[0] != "my-agent" {
+		t.Errorf("Tmux.ProcessNames[0]: got %q, want %q", result.Tmux.ProcessNames[0], "my-agent")
+	}
+}
+
+// TestFillRuntimeDefaults_SessionAutoFill_OpenCode verifies that opencode command
+// does NOT get a Session config (opencode has no session ID environment variables).
+// The Session struct is only created when at least one env var is defined.
+func TestFillRuntimeDefaults_SessionAutoFill_OpenCode(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "opencode",
+		// No Session config provided
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	// OpenCode has no session ID or config dir env vars, so Session should remain nil
+	// The auto-fill logic only creates a Session when at least one env var is non-empty
+	if result.Session != nil {
+		t.Errorf("Session should be nil for opencode (no session env vars), got %+v", result.Session)
+	}
+}
+
+// TestFillRuntimeDefaults_SessionAutoFill_Claude verifies that claude command
+// gets appropriate Session auto-fill values.
+func TestFillRuntimeDefaults_SessionAutoFill_Claude(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "claude",
+		// No Session config provided
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Session == nil {
+		t.Fatal("Session should be auto-filled for claude command")
+	}
+	if result.Session.SessionIDEnv != "CLAUDE_SESSION_ID" {
+		t.Errorf("Session.SessionIDEnv: got %q, want %q", result.Session.SessionIDEnv, "CLAUDE_SESSION_ID")
+	}
+	if result.Session.ConfigDirEnv != "CLAUDE_CONFIG_DIR" {
+		t.Errorf("Session.ConfigDirEnv: got %q, want %q", result.Session.ConfigDirEnv, "CLAUDE_CONFIG_DIR")
+	}
+}
+
+// TestFillRuntimeDefaults_SessionPreserved verifies that explicit Session config
+// values are preserved and NOT overwritten by auto-fill.
+func TestFillRuntimeDefaults_SessionPreserved(t *testing.T) {
+	t.Parallel()
+	input := &RuntimeConfig{
+		Command: "claude",
+		Session: &RuntimeSessionConfig{
+			SessionIDEnv: "CUSTOM_SESSION_ID",
+			ConfigDirEnv: "CUSTOM_CONFIG_DIR",
+		},
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	if result.Session == nil {
+		t.Fatal("Session should not be nil")
+	}
+	if result.Session.SessionIDEnv != "CUSTOM_SESSION_ID" {
+		t.Errorf("Session.SessionIDEnv: got %q, want %q (original value should be preserved)", result.Session.SessionIDEnv, "CUSTOM_SESSION_ID")
+	}
+	if result.Session.ConfigDirEnv != "CUSTOM_CONFIG_DIR" {
+		t.Errorf("Session.ConfigDirEnv: got %q, want %q (original value should be preserved)", result.Session.ConfigDirEnv, "CUSTOM_CONFIG_DIR")
+	}
+}
+
+// TestFillRuntimeDefaults_EndToEnd_CustomOpenCodeAgent verifies that a complete
+// custom OpenCode agent configuration (like Kimi K2.5) gets all fields populated
+// correctly through the fillRuntimeDefaults function.
+func TestFillRuntimeDefaults_EndToEnd_CustomOpenCodeAgent(t *testing.T) {
+	t.Parallel()
+	// This is the exact config shape from town settings for a custom OpenCode agent
+	input := &RuntimeConfig{
+		Provider:   "opencode",
+		Command:    "opencode",
+		Args:       []string{"-m", "kimi-k2.5"},
+		PromptMode: "none",
+		Env: map[string]string{
+			"OPENCODE_PERMISSION": `{"*":"allow"}`,
+		},
+		// No Tmux, Session, Hooks, or Instructions - all should be auto-filled
+	}
+
+	result := fillRuntimeDefaults(input)
+
+	// Verify Provider is preserved
+	if result.Provider != "opencode" {
+		t.Errorf("Provider: got %q, want %q", result.Provider, "opencode")
+	}
+
+	// Verify Command is preserved
+	if result.Command != "opencode" {
+		t.Errorf("Command: got %q, want %q", result.Command, "opencode")
+	}
+
+	// Verify Args are preserved
+	if len(result.Args) != 2 || result.Args[0] != "-m" || result.Args[1] != "kimi-k2.5" {
+		t.Errorf("Args: got %v, want %v", result.Args, []string{"-m", "kimi-k2.5"})
+	}
+
+	// Verify PromptMode is preserved
+	if result.PromptMode != "none" {
+		t.Errorf("PromptMode: got %q, want %q", result.PromptMode, "none")
+	}
+
+	// Verify Env is preserved
+	if result.Env["OPENCODE_PERMISSION"] != `{"*":"allow"}` {
+		t.Errorf("Env.OPENCODE_PERMISSION: got %q, want %q", result.Env["OPENCODE_PERMISSION"], `{"*":"allow"}`)
+	}
+
+	// Verify Tmux is auto-filled with correct values for opencode
+	if result.Tmux == nil {
+		t.Error("Tmux should be auto-filled for opencode")
+	} else {
+		if result.Tmux.ReadyDelayMs != 8000 {
+			t.Errorf("Tmux.ReadyDelayMs: got %d, want %d", result.Tmux.ReadyDelayMs, 8000)
+		}
+		if len(result.Tmux.ProcessNames) != 2 {
+			t.Errorf("Tmux.ProcessNames length: got %d, want %d", len(result.Tmux.ProcessNames), 2)
+		}
+	}
+
+	// Verify Session is NOT auto-filled for opencode (no session env vars defined)
+	if result.Session != nil {
+		t.Errorf("Session should be nil for opencode (no session env vars), got %+v", result.Session)
+	}
+
+	// Verify Hooks is auto-filled for opencode
+	if result.Hooks == nil {
+		t.Error("Hooks should be auto-filled for opencode")
+	} else {
+		if result.Hooks.Provider != "opencode" {
+			t.Errorf("Hooks.Provider: got %q, want %q", result.Hooks.Provider, "opencode")
+		}
+		if result.Hooks.Dir != ".opencode/plugin" {
+			t.Errorf("Hooks.Dir: got %q, want %q", result.Hooks.Dir, ".opencode/plugin")
+		}
+		if result.Hooks.SettingsFile != "gastown.js" {
+			t.Errorf("Hooks.SettingsFile: got %q, want %q", result.Hooks.SettingsFile, "gastown.js")
+		}
+	}
+
+	// Verify Instructions is NOT auto-filled for opencode (no default file)
+	if result.Instructions != nil {
+		t.Errorf("Instructions should be nil for opencode, got %+v", result.Instructions)
+	}
+}
+
 // TestDetectProviderFromCommand tests the provider detection from command paths.
 func TestDetectProviderFromCommand(t *testing.T) {
 	t.Parallel()
