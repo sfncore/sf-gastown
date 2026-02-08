@@ -14,6 +14,11 @@ import (
 	"github.com/sfncore/sf-gastown/internal/constants"
 )
 
+func extractSimpleRole(gtRole string) string {
+	parts := strings.SplitN(gtRole, "/", 2)
+	return strings.ToLower(parts[0])
+}
+
 var (
 	// ErrNotFound indicates the config file does not exist.
 	ErrNotFound = errors.New("config file not found")
