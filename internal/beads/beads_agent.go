@@ -13,7 +13,7 @@ import (
 // This is needed when the agent bead was created via routing to a different
 // database than the Beads wrapper's default directory.
 func runSlotSet(workDir, beadID, slotName, slotValue string) error {
-	cmd := exec.Command("bd", "slot", "set", beadID, slotName, slotValue)
+	cmd := exec.Command("bd", "--no-daemon", "--allow-stale", "slot", "set", beadID, slotName, slotValue) //nolint:gosec // G204: bd is a trusted internal tool
 	cmd.Dir = workDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(output)), err)
@@ -23,7 +23,7 @@ func runSlotSet(workDir, beadID, slotName, slotValue string) error {
 
 // runSlotClear runs `bd slot clear` from a specific directory.
 func runSlotClear(workDir, beadID, slotName string) error {
-	cmd := exec.Command("bd", "slot", "clear", beadID, slotName)
+	cmd := exec.Command("bd", "--no-daemon", "--allow-stale", "slot", "clear", beadID, slotName) //nolint:gosec // G204: bd is a trusted internal tool
 	cmd.Dir = workDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(output)), err)
@@ -220,7 +220,8 @@ func (b *Beads) CreateAgentBead(id, title string, fields *AgentFields) (*Issue, 
 //
 // The function:
 // 1. Tries to create the agent bead
-// 2. If UNIQUE constraint fails, reopens the existing bead and updates its fields
+// 2. If create fails, tries to reopen existing bead and update its fields
+// 3. If reopen also fails, returns the original create error
 func (b *Beads) CreateOrReopenAgentBead(id, title string, fields *AgentFields) (*Issue, error) {
 	// First try to create the bead
 	issue, err := b.CreateAgentBead(id, title, fields)
@@ -228,20 +229,19 @@ func (b *Beads) CreateOrReopenAgentBead(id, title string, fields *AgentFields) (
 		return issue, nil
 	}
 
-	// Check if it's a UNIQUE constraint error
-	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
-		return nil, err
-	}
+	// Create failed - try to reopen existing bead instead of parsing error messages
+	// (error formats differ between SQLite and Dolt backends)
+	createErr := err
 
 	// Resolve where this bead lives (for slot operations)
 	targetDir := ResolveRoutingTarget(b.getTownRoot(), id, b.getResolvedBeadsDir())
 
-	// The bead already exists (should be closed from previous polecat lifecycle)
-	// Reopen it and update its fields
+	// Try to reopen - if bead doesn't exist, this will fail and we return createErr
 	if _, reopenErr := b.run("reopen", id, "--reason=re-spawning agent"); reopenErr != nil {
 		// If reopen fails, the bead might already be open - continue with update
+		// Otherwise return the original create error (more informative than reopen error)
 		if !strings.Contains(reopenErr.Error(), "already open") {
-			return nil, fmt.Errorf("reopening existing agent bead: %w (original error: %v)", reopenErr, err)
+			return nil, createErr
 		}
 	}
 

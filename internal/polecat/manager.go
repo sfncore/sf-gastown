@@ -214,6 +214,11 @@ func (m *Manager) clonePath(name string) string {
 	return newPath
 }
 
+// ClonePath returns the path to a polecat's git worktree.
+func (m *Manager) ClonePath(name string) string {
+	return m.clonePath(name)
+}
+
 // exists checks if a polecat exists.
 func (m *Manager) exists(name string) bool {
 	_, err := os.Stat(m.polecatDir(name))
@@ -222,7 +227,8 @@ func (m *Manager) exists(name string) bool {
 
 // AddOptions configures polecat creation.
 type AddOptions struct {
-	HookBead string // Bead ID to set as hook_bead at spawn time (atomic assignment)
+	HookBead   string // Bead ID to set as hook_bead at spawn time (atomic assignment)
+	BaseBranch string // Override base branch for worktree (e.g., "origin/integration/gt-epic")
 }
 
 // Add creates a new polecat as a git worktree from the repo base.
@@ -385,12 +391,16 @@ func (m *Manager) AddWithOptions(name string, opts AddOptions) (*Polecat, error)
 	}
 
 	// Determine the start point for the new worktree
-	// Use origin/<default-branch> to ensure we start from the rig's configured branch
-	defaultBranch := "main"
-	if rigCfg, err := rig.LoadRigConfig(m.rig.Path); err == nil && rigCfg.DefaultBranch != "" {
-		defaultBranch = rigCfg.DefaultBranch
+	var startPoint string
+	if opts.BaseBranch != "" {
+		startPoint = opts.BaseBranch
+	} else {
+		defaultBranch := "main"
+		if rigCfg, err := rig.LoadRigConfig(m.rig.Path); err == nil && rigCfg.DefaultBranch != "" {
+			defaultBranch = rigCfg.DefaultBranch
+		}
+		startPoint = fmt.Sprintf("origin/%s", defaultBranch)
 	}
-	startPoint := fmt.Sprintf("origin/%s", defaultBranch)
 
 	// Always create fresh branch - unique name guarantees no collision
 	// git worktree add -b polecat/<name>-<timestamp> <path> <startpoint>
@@ -540,7 +550,21 @@ func (m *Manager) RemoveWithOptions(name string, force, nuclear, selfNuke bool) 
 		}
 	}
 
-// Close agent bead FIRST, before any filesystem operations.
+	// Even nuclear mode must not delete worktrees with unmerged MRs.
+	// The nuclear flag bypasses git-status checks (needed for self-nuke)
+	// but MR status is a higher-level concern that should always be checked.
+	if !force {
+		agentID := m.agentBeadID(name)
+		_, fields, aErr := m.beads.GetAgentBead(agentID)
+		if aErr == nil && fields != nil && fields.ActiveMR != "" {
+			mrBead, mrErr := m.beads.Show(fields.ActiveMR)
+			if mrErr == nil && mrBead != nil && mrBead.Status == "open" {
+				return fmt.Errorf("cannot remove polecat %s: MR %s is still open in merge queue\nRefinery will process the MR and clean up after merge\nUse --force to override (risks data loss)", name, fields.ActiveMR)
+			}
+		}
+	}
+
+	// Close agent bead FIRST, before any filesystem operations.
 	// This prevents a race where a concurrent sling allocates the same name,
 	// sets hook_bead, and then has it cleared by this cleanup. By closing
 	// the agent bead first, concurrent slings see a CLOSED bead and
@@ -757,27 +781,6 @@ func (m *Manager) RepairWorktreeWithOptions(name string, force bool, opts AddOpt
 		}
 	}
 
-	// Close old agent bead before recreation (non-fatal)
-	// NOTE: We use CloseAndClearAgentBead instead of DeleteAgentBead because bd delete --hard
-	// creates tombstones that cannot be reopened.
-	agentID := m.agentBeadID(name)
-	if err := m.beads.CloseAndClearAgentBead(agentID, "polecat repair"); err != nil {
-		if !errors.Is(err, beads.ErrNotFound) {
-			fmt.Printf("Warning: could not close old agent bead %s: %v\n", agentID, err)
-		}
-	}
-
-	// Remove the old worktree (use force for git worktree removal)
-	if err := repoGit.WorktreeRemove(oldClonePath, true); err != nil {
-		// Fall back to direct removal
-		if removeErr := os.RemoveAll(oldClonePath); removeErr != nil {
-			return nil, fmt.Errorf("removing old clone path: %w", removeErr)
-		}
-	}
-
-	// Prune stale worktree entries (non-fatal: cleanup only)
-	_ = repoGit.WorktreePrune()
-
 	// Fetch latest from origin to ensure we have fresh commits (non-fatal: may be offline)
 	_ = repoGit.Fetch("origin")
 
@@ -787,19 +790,53 @@ func (m *Manager) RepairWorktreeWithOptions(name string, force bool, opts AddOpt
 	}
 
 	// Determine the start point for the new worktree
-	// Use origin/<default-branch> to ensure we start from latest fetched commits
-	defaultBranch := "main"
-	if rigCfg, err := rig.LoadRigConfig(m.rig.Path); err == nil && rigCfg.DefaultBranch != "" {
-		defaultBranch = rigCfg.DefaultBranch
+	var startPoint string
+	if opts.BaseBranch != "" {
+		startPoint = opts.BaseBranch
+	} else {
+		defaultBranch := "main"
+		if rigCfg, err := rig.LoadRigConfig(m.rig.Path); err == nil && rigCfg.DefaultBranch != "" {
+			defaultBranch = rigCfg.DefaultBranch
+		}
+		startPoint = fmt.Sprintf("origin/%s", defaultBranch)
 	}
-	startPoint := fmt.Sprintf("origin/%s", defaultBranch)
 
-	// Create fresh worktree with unique branch name, starting from origin's default branch
-	// Old branches are left behind - they're ephemeral (never pushed to origin)
-	// and will be cleaned up by garbage collection
+	// Create fresh worktree to a temporary path first, so we can roll back if it fails.
+	// This prevents destroying the old worktree before the new one is confirmed working.
 	branchName := m.buildBranchName(name, opts.HookBead)
-	if err := repoGit.WorktreeAddFromRef(newClonePath, branchName, startPoint); err != nil {
+	tmpClonePath := newClonePath + ".repair-tmp"
+	_ = os.RemoveAll(tmpClonePath) // clean up any leftover temp dir
+	if err := repoGit.WorktreeAddFromRef(tmpClonePath, branchName, startPoint); err != nil {
 		return nil, fmt.Errorf("creating fresh worktree from %s: %w", startPoint, err)
+	}
+
+	// New worktree created successfully — now safe to close old bead and remove old worktree.
+	// Closing the bead AFTER creation prevents inconsistent state if creation fails.
+	// NOTE: We use CloseAndClearAgentBead instead of DeleteAgentBead because bd delete --hard
+	// creates tombstones that cannot be reopened.
+	agentID := m.agentBeadID(name)
+	if err := m.beads.CloseAndClearAgentBead(agentID, "polecat repair"); err != nil {
+		if !errors.Is(err, beads.ErrNotFound) {
+			fmt.Printf("Warning: could not close old agent bead %s: %v\n", agentID, err)
+		}
+	}
+
+	if err := repoGit.WorktreeRemove(oldClonePath, true); err != nil {
+		// Fall back to direct removal
+		if removeErr := os.RemoveAll(oldClonePath); removeErr != nil {
+			// Clean up temp worktree before returning
+			_ = repoGit.WorktreeRemove(tmpClonePath, true)
+			_ = os.RemoveAll(tmpClonePath)
+			return nil, fmt.Errorf("removing old clone path: %w", removeErr)
+		}
+	}
+
+	// Prune stale worktree entries (non-fatal: cleanup only)
+	_ = repoGit.WorktreePrune()
+
+	// Move temp worktree to final location
+	if err := os.Rename(tmpClonePath, newClonePath); err != nil {
+		return nil, fmt.Errorf("moving repaired worktree to final path: %w", err)
 	}
 
 	// Ensure AGENTS.md exists - critical for polecats to "land the plane"

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/sfncore/sf-gastown/internal/config"
 	"github.com/sfncore/sf-gastown/internal/events"
 	"github.com/sfncore/sf-gastown/internal/git"
 	"github.com/sfncore/sf-gastown/internal/mail"
@@ -19,6 +19,7 @@ import (
 	"github.com/sfncore/sf-gastown/internal/tmux"
 	"github.com/sfncore/sf-gastown/internal/townlog"
 	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/spf13/cobra"
 )
 
 var doneCmd = &cobra.Command{
@@ -124,10 +125,24 @@ func runDone(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Find current rig
-	rigName, _, err := findCurrentRig(townRoot)
-	if err != nil {
-		return err
+	// Find current rig - use cwd (which has fallback for deleted worktrees)
+	// instead of findCurrentRig which calls os.Getwd() and fails on deleted cwd
+	var rigName string
+	if cwd != "" {
+		relPath, err := filepath.Rel(townRoot, cwd)
+		if err == nil {
+			parts := strings.Split(relPath, string(filepath.Separator))
+			if len(parts) > 0 && parts[0] != "" && parts[0] != "." {
+				rigName = parts[0]
+			}
+		}
+	}
+	if rigName == "" {
+		// Last resort: try GT_RIG env var
+		rigName = os.Getenv("GT_RIG")
+	}
+	if rigName == "" {
+		return fmt.Errorf("cannot determine current rig (working directory may be deleted)")
 	}
 
 	// Initialize git - use cwd if available, otherwise use rig's mayor clone
@@ -378,10 +393,18 @@ func runDone(cmd *cobra.Command, args []string) error {
 		}
 
 		// Determine target branch (auto-detect integration branch if applicable)
+		// Only if refinery integration branch auto-targeting is enabled
 		target := defaultBranch
-		autoTarget, err := detectIntegrationBranch(bd, g, issueID)
-		if err == nil && autoTarget != "" {
-			target = autoTarget
+		refineryEnabled := true
+		settingsPath := filepath.Join(townRoot, rigName, "settings", "config.json")
+		if settings, err := config.LoadRigSettings(settingsPath); err == nil && settings.MergeQueue != nil {
+			refineryEnabled = settings.MergeQueue.IsRefineryIntegrationEnabled()
+		}
+		if refineryEnabled {
+			autoTarget, err := beads.DetectIntegrationBranch(bd, g, issueID)
+			if err == nil && autoTarget != "" {
+				target = autoTarget
+			}
 		}
 
 		// Get source issue for priority inheritance
@@ -733,7 +756,7 @@ func updateAgentStateOnDone(cwd, townRoot, exitType, _ string) { // issueID unus
 		if _, err := bd.Run("agent", "state", agentBeadID, "awaiting-gate"); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: couldn't set agent %s to awaiting-gate: %v\n", agentBeadID, err)
 		}
-	// ExitCompleted and ExitDeferred don't set state - observable from tmux
+		// ExitCompleted and ExitDeferred don't set state - observable from tmux
 	}
 
 	// ZFC #10: Self-report cleanup status
@@ -805,7 +828,7 @@ func parseCleanupStatus(s string) polecat.CleanupStatus {
 // selfNukePolecat deletes this polecat's worktree (self-cleaning model).
 // Called by polecats when they complete work via `gt done`.
 // This is safe because:
-// 1. Work has been pushed to origin (MR is in queue)
+// 1. Work has been pushed to origin (verified below)
 // 2. We're about to exit anyway
 // 3. Unix allows deleting directories while processes run in them
 func selfNukePolecat(roleInfo RoleInfo, _ string) error {
@@ -819,8 +842,32 @@ func selfNukePolecat(roleInfo RoleInfo, _ string) error {
 		return fmt.Errorf("getting polecat manager: %w", err)
 	}
 
-	// Use nuclear=true since we know we just pushed our work
-	// The branch is pushed, MR is created, we're clean
+	// Verify branch actually exists on a remote before nuking local copy.
+	// If push didn't land (no remote, auth failure, etc.), preserve worktree
+	// so Witness/Refinery can still access the branch.
+	clonePath := mgr.ClonePath(roleInfo.Polecat)
+	polecatGit := git.NewGit(clonePath)
+	remotes, err := polecatGit.Remotes()
+	if err != nil || len(remotes) == 0 {
+		return fmt.Errorf("no git remotes configured — preserving worktree to prevent data loss")
+	}
+	branchName, err := polecatGit.CurrentBranch()
+	if err != nil {
+		return fmt.Errorf("cannot determine current branch — preserving worktree: %w", err)
+	}
+	pushed := false
+	for _, remote := range remotes {
+		exists, err := polecatGit.RemoteBranchExists(remote, branchName)
+		if err == nil && exists {
+			pushed = true
+			break
+		}
+	}
+	if !pushed {
+		return fmt.Errorf("branch %s not found on any remote — preserving worktree", branchName)
+	}
+
+	// Use nuclear=true since we verified the branch is pushed
 	// selfNuke=true because polecat is deleting its own worktree from inside it
 	if err := mgr.RemoveWithOptions(roleInfo.Polecat, true, true, true); err != nil {
 		return fmt.Errorf("removing worktree: %w", err)

@@ -28,10 +28,13 @@ package doltserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -181,6 +184,73 @@ func IsRunning(townRoot string) (bool, int, error) {
 	}
 
 	return false, 0, nil
+}
+
+// CheckServerReachable verifies the Dolt server is actually accepting TCP connections.
+// This catches the case where a process exists but the server hasn't finished starting,
+// or the PID file is stale and the port is not actually listening.
+// Returns nil if reachable, error describing the problem otherwise.
+func CheckServerReachable(townRoot string) error {
+	config := DefaultConfig(townRoot)
+	addr := fmt.Sprintf("127.0.0.1:%d", config.Port)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("Dolt server not reachable at %s: %w\n\nStart with: gt dolt start", addr, err)
+	}
+	conn.Close()
+	return nil
+}
+
+// HasServerModeMetadata checks whether any rig has metadata.json configured for
+// Dolt server mode. Returns the list of rig names configured for server mode.
+// This is used to detect the split-brain risk: if metadata says "server" but
+// the server isn't running, bd commands may silently create isolated databases.
+func HasServerModeMetadata(townRoot string) []string {
+	var serverRigs []string
+
+	// Check town-level beads (hq)
+	townBeadsDir := filepath.Join(townRoot, ".beads")
+	if hasServerMode(townBeadsDir) {
+		serverRigs = append(serverRigs, "hq")
+	}
+
+	// Check rig-level beads
+	rigsPath := filepath.Join(townRoot, "mayor", "rigs.json")
+	data, err := os.ReadFile(rigsPath)
+	if err != nil {
+		return serverRigs
+	}
+	var config struct {
+		Rigs map[string]interface{} `json:"rigs"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return serverRigs
+	}
+
+	for rigName := range config.Rigs {
+		beadsDir := findRigBeadsDir(townRoot, rigName)
+		if beadsDir != "" && hasServerMode(beadsDir) {
+			serverRigs = append(serverRigs, rigName)
+		}
+	}
+
+	return serverRigs
+}
+
+// hasServerMode reads metadata.json and returns true if dolt_mode is "server".
+func hasServerMode(beadsDir string) bool {
+	metadataPath := filepath.Join(beadsDir, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return false
+	}
+	var metadata struct {
+		DoltMode string `json:"dolt_mode"`
+	}
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return false
+	}
+	return metadata.DoltMode == "server"
 }
 
 // findDoltServerOnPort finds a dolt sql-server process listening on the given port.
@@ -507,6 +577,12 @@ func InitRig(townRoot, rigName string) error {
 		return fmt.Errorf("initializing Dolt database: %w\n%s", err, output)
 	}
 
+	// Update metadata.json to point to the server
+	if err := EnsureMetadata(townRoot, rigName); err != nil {
+		// Non-fatal: init succeeded, metadata update failed
+		fmt.Fprintf(os.Stderr, "Warning: database initialized but metadata.json update failed: %v\n", err)
+	}
+
 	return nil
 }
 
@@ -592,10 +668,142 @@ func MigrateRigFromBeads(townRoot, rigName, sourcePath string) error {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
 
-	// Move the database directory
-	if err := os.Rename(sourcePath, targetDir); err != nil {
+	// Move the database directory (with cross-filesystem fallback)
+	if err := moveDir(sourcePath, targetDir); err != nil {
 		return fmt.Errorf("moving database: %w", err)
 	}
 
+	// Update metadata.json to point to the server
+	if err := EnsureMetadata(townRoot, rigName); err != nil {
+		// Non-fatal: migration succeeded, metadata update failed
+		fmt.Fprintf(os.Stderr, "Warning: database migrated but metadata.json update failed: %v\n", err)
+	}
+
+	return nil
+}
+
+// EnsureMetadata writes or updates the metadata.json for a rig's beads directory
+// to include proper Dolt server configuration. This prevents the split-brain problem
+// where bd falls back to local embedded databases instead of connecting to the
+// centralized Dolt server.
+//
+// For the "hq" rig, it writes to <townRoot>/.beads/metadata.json.
+// For other rigs, it writes to <townRoot>/<rigName>/mayor/rig/.beads/metadata.json.
+func EnsureMetadata(townRoot, rigName string) error {
+	beadsDir := findRigBeadsDir(townRoot, rigName)
+	if beadsDir == "" {
+		return fmt.Errorf("could not find .beads directory for rig %q", rigName)
+	}
+
+	metadataPath := filepath.Join(beadsDir, "metadata.json")
+
+	// Load existing metadata if present (preserve any extra fields)
+	existing := make(map[string]interface{})
+	if data, err := os.ReadFile(metadataPath); err == nil {
+		_ = json.Unmarshal(data, &existing) // best effort
+	}
+
+	// Set/update the dolt server fields
+	existing["database"] = "dolt"
+	existing["backend"] = "dolt"
+	existing["dolt_mode"] = "server"
+	existing["dolt_database"] = rigName
+
+	// Ensure jsonl_export has a default
+	if _, ok := existing["jsonl_export"]; !ok {
+		existing["jsonl_export"] = "issues.jsonl"
+	}
+
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling metadata: %w", err)
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		return fmt.Errorf("creating beads directory: %w", err)
+	}
+
+	if err := os.WriteFile(metadataPath, append(data, '\n'), 0600); err != nil {
+		return fmt.Errorf("writing metadata.json: %w", err)
+	}
+
+	return nil
+}
+
+// EnsureAllMetadata updates metadata.json for all rig databases known to the
+// Dolt server. This is the fix for the split-brain problem where worktrees
+// each have their own isolated database.
+func EnsureAllMetadata(townRoot string) (updated []string, errs []error) {
+	databases, err := ListDatabases(townRoot)
+	if err != nil {
+		return nil, []error{fmt.Errorf("listing databases: %w", err)}
+	}
+
+	for _, dbName := range databases {
+		if err := EnsureMetadata(townRoot, dbName); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", dbName, err))
+		} else {
+			updated = append(updated, dbName)
+		}
+	}
+
+	return updated, errs
+}
+
+// findRigBeadsDir returns the canonical .beads directory path for a rig.
+// For "hq", returns <townRoot>/.beads.
+// For other rigs, returns <townRoot>/<rigName>/mayor/rig/.beads if it exists,
+// otherwise <townRoot>/<rigName>/.beads.
+func findRigBeadsDir(townRoot, rigName string) string {
+	if rigName == "hq" {
+		return filepath.Join(townRoot, ".beads")
+	}
+
+	// Prefer mayor/rig/.beads (canonical location for tracked beads)
+	mayorBeads := filepath.Join(townRoot, rigName, "mayor", "rig", ".beads")
+	if _, err := os.Stat(mayorBeads); err == nil {
+		return mayorBeads
+	}
+
+	// Fall back to rig-root .beads
+	rigBeads := filepath.Join(townRoot, rigName, ".beads")
+	if _, err := os.Stat(rigBeads); err == nil {
+		return rigBeads
+	}
+
+	// Neither exists; return mayor path (caller will create it)
+	return mayorBeads
+}
+
+// moveDir moves a directory from src to dest. It first tries os.Rename for
+// efficiency, but falls back to copy+delete if src and dest are on different
+// filesystems (which causes EXDEV error on rename).
+func moveDir(src, dest string) error {
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	// Cross-filesystem: copy then delete source
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("robocopy", src, dest, "/E", "/MOVE", "/R:1", "/W:1")
+		if err := cmd.Run(); err != nil {
+			// robocopy returns 1 for success with copies
+			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() <= 7 {
+				return nil
+			}
+			return fmt.Errorf("robocopy: %w", err)
+		}
+		return nil
+	}
+	cmd := exec.Command("cp", "-a", src, dest)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copying directory: %w", err)
+	}
+	if err := os.RemoveAll(src); err != nil {
+		return fmt.Errorf("removing source after copy: %w", err)
+	}
 	return nil
 }
