@@ -2299,28 +2299,35 @@ func TestFillRuntimeDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("nil nested structs remain nil except auto-filled Hooks", func(t *testing.T) {
+	t.Run("nil nested structs remain nil except auto-filled Tmux", func(t *testing.T) {
 		t.Parallel()
 		input := &RuntimeConfig{
-			Command: "claude",
+			Command: "auggie",
 			// All nested structs left nil
 		}
 
 		result := fillRuntimeDefaults(input)
 
-		// Nil nested structs should remain nil (not get zero-value structs)
+		// Session should remain nil for auggie (no session defaults for non-claude providers)
 		if result.Session != nil {
 			t.Error("Session should remain nil when input has nil Session")
 		}
-		// Hooks is auto-filled for known agents (claude, opencode) to ensure
-		// EnsureSettingsForRole creates the correct settings files
-		if result.Hooks == nil {
-			t.Error("Hooks should be auto-filled for claude command")
-		} else if result.Hooks.Provider != "claude" {
-			t.Errorf("Hooks.Provider = %q, want %q", result.Hooks.Provider, "claude")
+		// Hooks is auto-filled only for known agents (claude, opencode)
+		// auggie is not auto-filled, so Hooks should remain nil
+		if result.Hooks != nil {
+			t.Error("Hooks should remain nil for auggie command")
 		}
-		if result.Tmux != nil {
-			t.Error("Tmux should remain nil when input has nil Tmux")
+		// Tmux is now auto-filled for all agents with meaningful defaults
+		// For auggie, ProcessNames should be set to ["auggie"] based on command
+		if result.Tmux == nil {
+			t.Error("Tmux should be auto-filled for auggie command")
+		} else {
+			if len(result.Tmux.ProcessNames) != 1 || result.Tmux.ProcessNames[0] != "auggie" {
+				t.Errorf("Tmux.ProcessNames = %v, want [\"auggie\"]", result.Tmux.ProcessNames)
+			}
+			if result.Tmux.ReadyDelayMs != 0 {
+				t.Errorf("Tmux.ReadyDelayMs = %d, want 0", result.Tmux.ReadyDelayMs)
+			}
 		}
 		if result.Instructions != nil {
 			t.Error("Instructions should remain nil when input has nil Instructions")

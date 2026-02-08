@@ -1194,6 +1194,33 @@ func fillRuntimeDefaults(rc *RuntimeConfig) *RuntimeConfig {
 		}
 	}
 
+	// Auto-fill Tmux defaults based on provider.
+	// This ensures custom agents get appropriate tmux heuristics for readiness detection.
+	if result.Tmux == nil {
+		delayMs := defaultReadyDelayMs(result.Provider)
+		processNames := defaultProcessNames(result.Provider, result.Command)
+		if delayMs > 0 || len(processNames) > 0 {
+			result.Tmux = &RuntimeTmuxConfig{
+				ReadyDelayMs:      delayMs,
+				ReadyPromptPrefix: defaultReadyPromptPrefix(result.Provider),
+				ProcessNames:      processNames,
+			}
+		}
+	}
+
+	// Auto-fill Session defaults based on provider.
+	// This ensures custom agents get appropriate session ID and config dir env vars.
+	if result.Session == nil {
+		sessionIDEnv := defaultSessionIDEnv(result.Provider)
+		configDirEnv := defaultConfigDirEnv(result.Provider)
+		if sessionIDEnv != "" || configDirEnv != "" {
+			result.Session = &RuntimeSessionConfig{
+				SessionIDEnv: sessionIDEnv,
+				ConfigDirEnv: configDirEnv,
+			}
+		}
+	}
+
 	// Auto-fill Env defaults for opencode (YOLO mode).
 	// Custom opencode agents need OPENCODE_PERMISSION to run autonomously.
 	if result.Command == "opencode" {

@@ -244,6 +244,24 @@ func (c *RoutesCheck) Fix(ctx *CheckContext) error {
 		routes = []beads.Route{} // Start fresh if can't load
 	}
 
+	// Filter out routes where the target path doesn't exist
+	var validRoutes []beads.Route
+	for _, r := range routes {
+		// Special case: "." is town root, always valid
+		if r.Path == "." {
+			validRoutes = append(validRoutes, r)
+			continue
+		}
+
+		rigPath := filepath.Join(ctx.TownRoot, r.Path)
+		if _, err := os.Stat(rigPath); os.IsNotExist(err) {
+			// Path doesn't exist, skip this route (remove it)
+			continue
+		}
+		validRoutes = append(validRoutes, r)
+	}
+	routes = validRoutes
+
 	// Build map of existing prefixes
 	routeMap := make(map[string]bool)
 	for _, r := range routes {
