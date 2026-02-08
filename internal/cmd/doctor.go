@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/sfncore/sf-gastown/internal/doctor"
 	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -184,6 +184,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	d.Register(doctor.NewStaleAgentBeadsCheck())
 	d.Register(doctor.NewRigBeadsCheck())
 	d.Register(doctor.NewRoleBeadsCheck())
+
+	// Agent configuration checks
+	d.Register(doctor.NewAgentTmuxConfigCheck())
 
 	// NOTE: StaleAttachmentsCheck removed - staleness detection belongs in Deacon molecule
 
