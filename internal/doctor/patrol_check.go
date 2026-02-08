@@ -184,10 +184,20 @@ func (c *PatrolHooksWiredCheck) Fix(ctx *CheckContext) error {
 	return config.EnsureDaemonPatrolConfig(ctx.TownRoot)
 }
 
+// stuckWisp represents a wisp that has been in_progress too long.
+type stuckWisp struct {
+	id        string
+	title     string
+	rigName   string
+	assignee  string
+	updatedAt time.Time
+}
+
 // PatrolNotStuckCheck detects wisps that have been in_progress too long.
 type PatrolNotStuckCheck struct {
-	BaseCheck
+	FixableCheck
 	stuckThreshold time.Duration
+	stuckWisps     []stuckWisp // Cached during Run for use in Fix
 }
 
 // DefaultStuckThreshold is the fallback when no role bead config exists.
@@ -197,10 +207,12 @@ const DefaultStuckThreshold = 1 * time.Hour
 // NewPatrolNotStuckCheck creates a new patrol not stuck check.
 func NewPatrolNotStuckCheck() *PatrolNotStuckCheck {
 	return &PatrolNotStuckCheck{
-		BaseCheck: BaseCheck{
-			CheckName:        "patrol-not-stuck",
-			CheckDescription: "Check for stuck patrol wisps (>1h in_progress)",
-			CheckCategory:    CategoryPatrol,
+		FixableCheck: FixableCheck{
+			BaseCheck: BaseCheck{
+				CheckName:        "patrol-not-stuck",
+				CheckDescription: "Check for stuck patrol wisps (>1h in_progress)",
+				CheckCategory:    CategoryPatrol,
+			},
 		},
 		stuckThreshold: DefaultStuckThreshold,
 	}
@@ -224,6 +236,7 @@ func loadStuckThreshold(townRoot string) time.Duration {
 func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
 	// Load threshold from role bead (ZFC: agent-controlled)
 	c.stuckThreshold = loadStuckThreshold(ctx.TownRoot)
+	c.stuckWisps = nil // Clear cached data
 
 	rigs, err := discoverRigs(ctx.TownRoot)
 	if err != nil {
@@ -243,25 +256,28 @@ func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
 		}
 	}
 
-	var stuckWisps []string
 	for _, rigName := range rigs {
 		// Check main beads database for wisps (issues with Wisp=true)
 		// Follows redirect if present (rig root may redirect to mayor/rig/.beads)
 		rigPath := filepath.Join(ctx.TownRoot, rigName)
 		beadsDir := beads.ResolveBeadsDir(rigPath)
 		beadsPath := filepath.Join(beadsDir, "issues.jsonl")
-		stuck := c.checkStuckWisps(beadsPath, rigName)
-		stuckWisps = append(stuckWisps, stuck...)
+		c.checkStuckWisps(beadsPath, rigName)
 	}
 
 	thresholdStr := c.stuckThreshold.String()
-	if len(stuckWisps) > 0 {
+	if len(c.stuckWisps) > 0 {
+		var details []string
+		for _, wisp := range c.stuckWisps {
+			details = append(details, fmt.Sprintf("%s: %s (%s) - stale since %s",
+				wisp.rigName, wisp.id, wisp.title, wisp.updatedAt.Format("2006-01-02 15:04")))
+		}
 		return &CheckResult{
 			Name:    c.Name(),
 			Status:  StatusWarning,
-			Message: fmt.Sprintf("%d stuck patrol wisp(s) found (>%s)", len(stuckWisps), thresholdStr),
-			Details: stuckWisps,
-			FixHint: "Manual review required - wisps may need to be burned or sessions restarted",
+			Message: fmt.Sprintf("%d stuck patrol wisp(s) found (>%s)", len(c.stuckWisps), thresholdStr),
+			Details: details,
+			FixHint: "Run 'gt doctor --fix' to burn stuck wisps and clean up dead sessions",
 		}
 	}
 
@@ -272,15 +288,14 @@ func (c *PatrolNotStuckCheck) Run(ctx *CheckContext) *CheckResult {
 	}
 }
 
-// checkStuckWisps returns descriptions of stuck wisps in a rig.
-func (c *PatrolNotStuckCheck) checkStuckWisps(issuesPath string, rigName string) []string {
+// checkStuckWisps populates c.stuckWisps with stuck wisps found in a rig.
+func (c *PatrolNotStuckCheck) checkStuckWisps(issuesPath string, rigName string) {
 	file, err := os.Open(issuesPath)
 	if err != nil {
-		return nil // No issues file
+		return // No issues file
 	}
 	defer file.Close()
 
-	var stuck []string
 	cutoff := time.Now().Add(-c.stuckThreshold)
 
 	scanner := bufio.NewScanner(file)
@@ -294,6 +309,7 @@ func (c *PatrolNotStuckCheck) checkStuckWisps(issuesPath string, rigName string)
 			ID        string    `json:"id"`
 			Title     string    `json:"title"`
 			Status    string    `json:"status"`
+			Assignee  string    `json:"assignee"`
 			UpdatedAt time.Time `json:"updated_at"`
 		}
 		if err := json.Unmarshal([]byte(line), &issue); err != nil {
@@ -302,12 +318,84 @@ func (c *PatrolNotStuckCheck) checkStuckWisps(issuesPath string, rigName string)
 
 		// Check for in_progress issues older than threshold
 		if issue.Status == "in_progress" && !issue.UpdatedAt.IsZero() && issue.UpdatedAt.Before(cutoff) {
-			stuck = append(stuck, fmt.Sprintf("%s: %s (%s) - stale since %s",
-				rigName, issue.ID, issue.Title, issue.UpdatedAt.Format("2006-01-02 15:04")))
+			c.stuckWisps = append(c.stuckWisps, stuckWisp{
+				id:        issue.ID,
+				title:     issue.Title,
+				rigName:   rigName,
+				assignee:  issue.Assignee,
+				updatedAt: issue.UpdatedAt,
+			})
+		}
+	}
+}
+
+// Fix burns stuck patrol wisps and cleans up associated dead tmux sessions.
+func (c *PatrolNotStuckCheck) Fix(ctx *CheckContext) error {
+	if len(c.stuckWisps) == 0 {
+		return nil
+	}
+
+	var lastErr error
+	for _, wisp := range c.stuckWisps {
+		// Determine working directory for bd command
+		var workDir string
+		if wisp.rigName == "town" {
+			workDir = ctx.TownRoot
+		} else {
+			workDir = filepath.Join(ctx.TownRoot, wisp.rigName)
+		}
+
+		// Close the stuck wisp with --force flag
+		closeReason := fmt.Sprintf("Closed by doctor: stuck >%s (in_progress since %s)",
+			c.stuckThreshold.String(), wisp.updatedAt.Format("2006-01-02 15:04"))
+		cmd := exec.Command("bd", "close", wisp.id, "--force", "--reason", closeReason)
+		cmd.Dir = workDir
+		if output, err := cmd.CombinedOutput(); err != nil {
+			lastErr = fmt.Errorf("%s/%s: %v (%s)", wisp.rigName, wisp.id, err, string(output))
+			continue
+		}
+
+		// If wisp has an assignee, try to clean up associated tmux session
+		if wisp.assignee != "" {
+			c.cleanupTmuxSession(ctx, wisp)
 		}
 	}
 
-	return stuck
+	return lastErr
+}
+
+// cleanupTmuxSession attempts to kill the tmux session associated with a wisp's assignee.
+// Assignee format: "rigname/polecats/polecatname" -> session "gt-rigname-polecatname"
+func (c *PatrolNotStuckCheck) cleanupTmuxSession(ctx *CheckContext, wisp stuckWisp) {
+	// Parse assignee to get tmux session name
+	// Expected format: "rigname/polecats/name" or "rigname/crew/name"
+	parts := strings.Split(wisp.assignee, "/")
+	if len(parts) != 3 {
+		return // Invalid assignee format
+	}
+
+	rigName := parts[0]
+	roleType := parts[1] // "polecats" or "crew"
+	agentName := parts[2]
+
+	var sessionName string
+	if roleType == "polecats" {
+		sessionName = fmt.Sprintf("gt-%s-%s", rigName, agentName)
+	} else if roleType == "crew" {
+		sessionName = fmt.Sprintf("gt-%s-crew-%s", rigName, agentName)
+	} else {
+		return // Unknown role type
+	}
+
+	// Check if session exists before trying to kill it
+	checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
+	if err := checkCmd.Run(); err != nil {
+		return // Session doesn't exist, nothing to clean up
+	}
+
+	// Kill the session
+	killCmd := exec.Command("tmux", "kill-session", "-t", sessionName)
+	_ = killCmd.Run() // Best effort, ignore errors
 }
 
 // PatrolPluginsAccessibleCheck verifies plugin directories exist and are readable.
