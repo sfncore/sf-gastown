@@ -1,0 +1,91 @@
+{
+  "_description": "TOWN-LEVEL SETTINGS: This is the main configuration for all Gas Town agents",
+  "type": "town-settings",
+  "version": 1,
+  
+  "_default_agent_comment": "The default agent to use when a role doesn't have a specific assignment",
+  "default_agent": "Kimi K2.5",
+  
+  "_agents_comment": "Define all available AI agents here. Each agent specifies the command, model, and environment",
+  "agents": {
+    "Kimi K2.5": {
+      "_comment": "Example OpenCode agent with Kimi K2.5 model and full permissions",
+      "command": "opencode",
+      "args": [
+        "-m",
+        "kimi-for-coding/kimi-k2.5"
+      ],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    
+    "opencode-claude": {
+      "_comment": "OpenCode using Claude via OpenRouter",
+      "command": "opencode",
+      "args": [
+        "-m",
+        "openrouter/anthropic/claude-sonnet-4"
+      ],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    
+    "opencode-gpt": {
+      "_comment": "OpenCode using GPT-5.2 via OpenRouter",
+      "command": "opencode",
+      "args": [
+        "-m",
+        "openai/gpt-5.2-codex"
+      ],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    
+    "claude-sonnet": {
+      "_comment": "Native Claude CLI with Sonnet model",
+      "command": "claude",
+      "args": [
+        "--model",
+        "sonnet",
+        "--dangerously-skip-permissions"
+      ]
+    },
+    
+    "claude-opus": {
+      "_comment": "Native Claude CLI with Opus model (for complex tasks)",
+      "command": "claude",
+      "args": [
+        "--model",
+        "opus",
+        "--dangerously-skip-permissions"
+      ]
+    }
+  },
+  
+  "_role_agents_comment": "Map each Gas Town role to an agent from the 'agents' section above",
+  "role_agents": {
+    "_deacon_comment": "Deacons handle complex orchestration - use strongest model",
+    "deacon": "claude-opus",
+    
+    "_mayor_comment": "Mayor coordinates entire towns - use strongest model",
+    "mayor": "claude-opus",
+    
+    "_polecat_comment": "Polecats do most of the work - balanced cost/performance",
+    "polecat": "Kimi K2.5",
+    
+    "_refinery_comment": "Refinery processes code - needs good coding ability",
+    "refinery": "Kimi K2.5",
+    
+    "_witness_comment": "Witness monitors health - can use lighter model",
+    "witness": "Kimi K2.5"
+  },
+  
+  "_gastown_src_comment": "Optional: Override the Gas Town source directory (usually auto-detected)",
+  "gastown_src": "/home/ubuntu/gt/sfgastown/mayor/rig"
+}

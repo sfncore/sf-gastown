@@ -1,0 +1,45 @@
+{
+  "_description": "RIG-LEVEL SETTINGS: Override town defaults for this specific rig",
+  "type": "rig-settings",
+  "version": 1,
+  
+  "_comment": "This rig (sfgastown) overrides some town defaults",
+  
+  "_default_agent_comment": "Override the town's default agent for this rig",
+  "default_agent": "Kimi K2.5",
+  
+  "_agents_comment": "Rig can define additional agents or override town agent definitions",
+  "agents": {
+    "sfgastown-special": {
+      "_comment": "Rig-specific agent with custom configuration",
+      "command": "opencode",
+      "args": [
+        "-m",
+        "kimi-for-coding/kimi-k2.5"
+      ],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}",
+        "RIG_SPECIFIC_VAR": "sfgastown-value"
+      },
+      "prompt_mode": "none"
+    }
+  },
+  
+  "_role_agents_comment": "Override specific role assignments for this rig only",
+  "role_agents": {
+    "_example_override": "This rig's refinery uses a different model than town default",
+    "refinery": "sfgastown-special"
+  },
+  
+  "_inheritance_comment": "How rig settings work:",
+  "_inheritance_note_1": "1. Rig RoleAgents override Town RoleAgents for this rig only",
+  "_inheritance_note_2": "2. Rig agents are merged with town agents (rig takes precedence on name collision)",
+  "_inheritance_note_3": "3. Other rigs are not affected by these settings",
+  
+  "_resolution_order": "Agent resolution order (first match wins):",
+  "_resolution_step_1": "1. Rig's RoleAgents[role]",
+  "_resolution_step_2": "2. Town's RoleAgents[role]",
+  "_resolution_step_3": "3. Rig's default_agent",
+  "_resolution_step_4": "4. Town's default_agent",
+  "_resolution_step_5": "5. Fallback to 'claude'"
+}
