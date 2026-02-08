@@ -10,9 +10,9 @@ import (
 
 	"github.com/sfncore/sf-gastown/internal/beads"
 	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/runtime"
 	"github.com/sfncore/sf-gastown/internal/constants"
 	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/sfncore/sf-gastown/internal/runtime"
 	"github.com/sfncore/sf-gastown/internal/session"
 	"github.com/sfncore/sf-gastown/internal/tmux"
 	"github.com/sfncore/sf-gastown/internal/workspace"
@@ -131,7 +131,7 @@ func (m *Manager) Start(foreground bool, agentOverride string, envOverrides []st
 	}
 
 	// Build startup command first
-	// NOTE: No gt prime injection needed - SessionStart hook handles it automatically
+	// NOTE: SessionStart hook handles gt prime for Claude agents; OpenCode needs RunStartupFallback below
 	// Export GT_ROLE and BD_ACTOR in the command since tmux SetEnvironment only affects new panes
 	// Pass m.rig.Path so rig agent settings are honored (not town-level defaults)
 	command, err := buildWitnessStartCommand(m.rig.Path, m.rig.Name, townRoot, agentOverride, roleConfig)
@@ -181,6 +181,10 @@ func (m *Manager) Start(foreground bool, agentOverride string, envOverrides []st
 	_ = t.AcceptBypassPermissionsWarning(sessionID)
 
 	time.Sleep(constants.ShutdownNotifyDelay)
+
+	// Fallback for non-hook agents (OpenCode etc): nudge gt prime
+	runtimeConfig = config.ResolveRoleAgentConfig("witness", townRoot, m.rig.Path)
+	_ = runtime.RunStartupFallback(t, sessionID, "witness", runtimeConfig)
 
 	return nil
 }
