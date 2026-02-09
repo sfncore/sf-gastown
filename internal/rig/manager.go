@@ -1,10 +1,10 @@
 package rig
 
 import (
+	"github.com/steveyegge/gastown/internal/cli"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sfncore/sf-gastown/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/constants"
-	"github.com/sfncore/sf-gastown/internal/git"
-	"github.com/sfncore/sf-gastown/internal/runtime"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/runtime"
 )
 
 // Common errors
@@ -491,8 +491,7 @@ func (m *Manager) AddRig(opts AddRigOptions) (*Rig, error) {
 	}
 	// Create refinery hooks for patrol triggering (at refinery/ level, not rig/)
 	refineryPath := filepath.Dir(refineryRigPath)
-	townRoot := filepath.Dir(rigPath)
-	runtimeConfig := config.ResolveRoleAgentConfig("deacon", townRoot, rigPath)
+	runtimeConfig := config.ResolveRoleAgentConfig("refinery", m.townRoot, rigPath)
 	if err := m.createPatrolHooks(refineryPath, runtimeConfig); err != nil {
 		fmt.Printf("  Warning: Could not create refinery hooks: %v\n", err)
 	}
@@ -1321,13 +1320,10 @@ See docs/deacon-plugins.md for full documentation.
 		return fmt.Errorf("creating rig plugins directory: %w", err)
 	}
 
-	// Add plugins/, .repo.git/, and .land-worktree/ to rig .gitignore
+	// Add plugins/ and .repo.git/ to rig .gitignore
 	gitignorePath := filepath.Join(rigPath, ".gitignore")
 	if err := m.ensureGitignoreEntry(gitignorePath, "plugins/"); err != nil {
 		return err
 	}
-	if err := m.ensureGitignoreEntry(gitignorePath, ".repo.git/"); err != nil {
-		return err
-	}
-	return m.ensureGitignoreEntry(gitignorePath, ".land-worktree/")
+	return m.ensureGitignoreEntry(gitignorePath, ".repo.git/")
 }

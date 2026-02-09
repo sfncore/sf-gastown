@@ -11,21 +11,27 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/daemon"
-	"github.com/sfncore/sf-gastown/internal/events"
-	"github.com/sfncore/sf-gastown/internal/git"
-	"github.com/sfncore/sf-gastown/internal/polecat"
-	"github.com/sfncore/sf-gastown/internal/rig"
-	"github.com/sfncore/sf-gastown/internal/session"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/tmux"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/daemon"
+	"github.com/steveyegge/gastown/internal/events"
+	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/polecat"
+	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/session"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 const (
 	shutdownLockFile    = "daemon/shutdown.lock"
 	shutdownLockTimeout = 5 * time.Second
+
+	// defaultDownOrphanGraceSecs is the grace period for orphan cleanup during gt down.
+	// Short because gt down is meant to be quick - processes already had SIGTERM via
+	// KillSessionWithProcesses.
+	defaultDownOrphanGraceSecs = 5
 )
 
 var downCmd = &cobra.Command{
@@ -96,8 +102,11 @@ func runDown(cmd *cobra.Command, args []string) error {
 		}
 		defer func() {
 			_ = lock.Unlock()
-			// Clean up lock file after releasing (defense in depth)
-			_ = os.Remove(filepath.Join(townRoot, shutdownLockFile))
+			// Do NOT remove the lock file. Flock works on file descriptors,
+			// not paths. Removing the file while another process is waiting
+			// on the flock causes it to acquire a lock on the deleted inode,
+			// providing no mutual exclusion against a process that creates a
+			// new file at the same path.
 		}()
 
 		// Prevent tmux server from exiting when all sessions are killed.
@@ -220,8 +229,12 @@ func runDown(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Phase 5: Verification (--all only)
-	if downAll && !downDryRun {
+	// Phase 5: Orphan cleanup and verification (--all or --force)
+	if (downAll || downForce) && !downDryRun {
+		fmt.Println()
+		fmt.Println("Cleaning up orphaned Claude processes...")
+		cleanupOrphanedClaude(defaultDownOrphanGraceSecs)
+
 		time.Sleep(500 * time.Millisecond)
 		respawned := verifyShutdown(t, townRoot)
 		if len(respawned) > 0 {
@@ -365,7 +378,9 @@ func stopSession(t *tmux.Tmux, sessionName string) (bool, error) {
 	// Try graceful shutdown first (Ctrl-C, best-effort interrupt)
 	if !downForce {
 		_ = t.SendKeysRaw(sessionName, "C-c")
-		time.Sleep(100 * time.Millisecond)
+		if session.WaitForSessionExit(t, sessionName, constants.GracefulShutdownTimeout) {
+			return true, nil // Process exited gracefully
+		}
 	}
 
 	// Kill the session (with explicit process termination to prevent orphans)

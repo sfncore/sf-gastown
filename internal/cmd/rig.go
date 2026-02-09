@@ -2,8 +2,11 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -390,6 +393,12 @@ func runRigAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving rigs config: %w", err)
 	}
 
+	// Add new rig to daemon.json patrol config (witness + refinery rigs arrays)
+	if err := config.AddRigToDaemonPatrols(townRoot, name); err != nil {
+		// Non-fatal: daemon will still work, just won't auto-manage this rig
+		fmt.Printf("  %s Could not update daemon.json patrols: %v\n", style.Warning.Render("!"), err)
+	}
+
 	// Add route to town-level routes.jsonl for prefix-based routing.
 	// Route points to the canonical beads location:
 	// - If source repo has .beads/ tracked in git, route to mayor/rig
@@ -620,6 +629,11 @@ func runRigAdopt(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("saving rigs config: %w", err)
 	}
 
+	// Add adopted rig to daemon.json patrol config (witness + refinery rigs arrays)
+	if err := config.AddRigToDaemonPatrols(townRoot, name); err != nil {
+		fmt.Printf("  %s Could not update daemon.json patrols: %v\n", style.Warning.Render("!"), err)
+	}
+
 	// Add route to town-level routes.jsonl for prefix-based routing
 	if result.BeadsPrefix != "" {
 		routePath := name
@@ -634,6 +648,66 @@ func runRigAdopt(_ *cobra.Command, args []string) error {
 		if err := beads.AppendRoute(townRoot, route); err != nil {
 			fmt.Printf("  %s Could not update routes.jsonl: %v\n", style.Warning.Render("!"), err)
 		}
+	}
+
+	// Check for tracked beads and initialize beads.db if missing (Issue #72)
+	rigPath := filepath.Join(townRoot, name)
+	beadsDirCandidates := []string{
+		filepath.Join(rigPath, ".beads"),
+		filepath.Join(rigPath, "mayor", "rig", ".beads"),
+	}
+	for _, beadsDir := range beadsDirCandidates {
+		if _, err := os.Stat(beadsDir); err != nil {
+			continue
+		}
+
+		// Detect prefix from issues.jsonl (prefix is stored in DB, not config.yaml)
+		jsonlPath := filepath.Join(beadsDir, "issues.jsonl")
+		if f, readErr := os.Open(jsonlPath); readErr == nil {
+			scanner := bufio.NewScanner(f)
+			if scanner.Scan() {
+				var issue struct {
+					ID string `json:"id"`
+				}
+				if json.Unmarshal(scanner.Bytes(), &issue) == nil && issue.ID != "" {
+					// Extract prefix: everything before the last "-" segment
+					if lastDash := strings.LastIndex(issue.ID, "-"); lastDash > 0 {
+						detected := issue.ID[:lastDash]
+						if detected != "" && rigAddPrefix != "" {
+							if strings.TrimSuffix(rigAddPrefix, "-") != detected {
+								f.Close()
+								return fmt.Errorf("prefix mismatch: source repo uses '%s' but --prefix '%s' was provided", detected, rigAddPrefix)
+							}
+						}
+						if detected != "" && result.BeadsPrefix == "" {
+							result.BeadsPrefix = detected
+						}
+					}
+				}
+			}
+			f.Close()
+		}
+
+		// Init beads.db if missing
+		beadsDB := filepath.Join(beadsDir, "beads.db")
+		if _, err := os.Stat(beadsDB); os.IsNotExist(err) {
+			prefix := result.BeadsPrefix
+			if prefix == "" {
+				break
+			}
+			// Remove stale WAL/SHM files that could cause SQLite errors
+			os.Remove(filepath.Join(beadsDir, "beads.db-wal"))
+			os.Remove(filepath.Join(beadsDir, "beads.db-shm"))
+			workDir := filepath.Dir(beadsDir) // directory containing .beads/
+			initCmd := exec.Command("bd", "--no-daemon", "init", "--prefix", prefix)
+			initCmd.Dir = workDir
+			if output, initErr := initCmd.CombinedOutput(); initErr != nil {
+				fmt.Printf("  %s Could not init bd database: %v (%s)\n", style.Warning.Render("!"), initErr, strings.TrimSpace(string(output)))
+			} else {
+				fmt.Printf("  %s Initialized beads database\n", style.Success.Render("✓"))
+			}
+		}
+		break
 	}
 
 	// Print results

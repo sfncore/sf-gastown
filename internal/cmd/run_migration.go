@@ -1,18 +1,19 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/formula"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/formula"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/util"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // MigrationCheckpoint tracks progress through migration steps.
@@ -26,13 +27,14 @@ type MigrationCheckpoint struct {
 
 // StepRun tracks execution state for a single migration step.
 type StepRun struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Status      string    `json:"status"` // "pending", "running", "completed", "failed"
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	Output      string    `json:"output,omitempty"`
+	ID                string    `json:"id"`
+	Title             string    `json:"title"`
+	Status            string    `json:"status"` // "pending", "running", "completed", "failed"
+	StartedAt         time.Time `json:"started_at,omitempty"`
+	CompletedAt       time.Time `json:"completed_at,omitempty"`
+	Error             string    `json:"error,omitempty"`
+	Output            string    `json:"output,omitempty"`
+	CommandsCompleted int       `json:"commands_completed"` // number of commands within the step that finished successfully
 }
 
 const migrationCheckpointFile = ".migration-checkpoint.json"
@@ -42,6 +44,7 @@ var (
 	runMigrationDryRun  bool
 	runMigrationStep    string
 	runMigrationVerbose bool
+	runMigrationTimeout time.Duration
 )
 
 var runMigrationCmd = &cobra.Command{
@@ -82,6 +85,7 @@ func init() {
 	runMigrationCmd.Flags().BoolVar(&runMigrationDryRun, "dry-run", false, "Preview execution plan without running")
 	runMigrationCmd.Flags().StringVar(&runMigrationStep, "step", "", "Run a specific step (skip dependency check)")
 	runMigrationCmd.Flags().BoolVarP(&runMigrationVerbose, "verbose", "v", false, "Show step output in detail")
+	runMigrationCmd.Flags().DurationVar(&runMigrationTimeout, "timeout", 5*time.Minute, "Timeout per migration step (e.g. 10m, 30s)")
 
 	rootCmd.AddCommand(runMigrationCmd)
 }
@@ -203,7 +207,9 @@ func loadMigrationCheckpoint(townRoot string) (*MigrationCheckpoint, error) {
 	return &cp, nil
 }
 
-// saveMigrationCheckpoint persists the checkpoint to disk.
+// saveMigrationCheckpoint persists the checkpoint to disk atomically.
+// Uses atomic write (temp file + rename) to prevent corruption if the
+// process crashes mid-write, which would break checkpoint-based recovery.
 func saveMigrationCheckpoint(townRoot string, cp *MigrationCheckpoint) error {
 	cp.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(cp, "", "  ")
@@ -212,7 +218,7 @@ func saveMigrationCheckpoint(townRoot string, cp *MigrationCheckpoint) error {
 	}
 
 	path := filepath.Join(townRoot, migrationCheckpointFile)
-	return os.WriteFile(path, data, 0600)
+	return util.AtomicWriteFile(path, data, 0600)
 }
 
 // dryRunMigration shows what would be executed.
@@ -318,12 +324,15 @@ func executeMigrationSteps(f *formula.Formula, cp *MigrationCheckpoint, stepOrde
 
 // executeMigrationStep runs a single migration step with checkpointing.
 func executeMigrationStep(_ *formula.Formula, cp *MigrationCheckpoint, step *formula.Step, townRoot string) error {
-	// Update checkpoint: step running
+	// Update checkpoint: step running (preserve per-command progress from prior attempt)
 	sr := StepRun{
 		ID:        step.ID,
 		Title:     step.Title,
 		Status:    "running",
 		StartedAt: time.Now(),
+	}
+	if prev, ok := cp.Steps[step.ID]; ok && prev.CommandsCompleted > 0 {
+		sr.CommandsCompleted = prev.CommandsCompleted
 	}
 	cp.Steps[step.ID] = sr
 	if err := saveMigrationCheckpoint(townRoot, cp); err != nil {
@@ -348,17 +357,31 @@ func executeMigrationStep(_ *formula.Formula, cp *MigrationCheckpoint, step *for
 			}
 		}
 	} else {
-		// Execute commands sequentially
-		for _, cmdStr := range commands {
+		// Execute commands sequentially, skipping already-completed ones on retry
+		for cmdIdx, cmdStr := range commands {
+			if cmdIdx < sr.CommandsCompleted {
+				if runMigrationVerbose {
+					fmt.Printf("    %s %s (already completed)\n", style.Dim.Render("skip:"), cmdStr)
+				}
+				continue
+			}
+
 			if runMigrationVerbose {
 				fmt.Printf("    %s %s\n", style.Dim.Render("$"), cmdStr)
 			}
 
-			c := exec.Command("bash", "-c", cmdStr)
+			ctx, cancel := context.WithTimeout(context.Background(), runMigrationTimeout)
+			c := migrationShellCmd(ctx, cmdStr)
 			c.Dir = townRoot
 			c.Env = append(os.Environ(), "GT_MIGRATION=1")
+			// Set platform-specific process group attributes so we can
+			// kill all children on timeout, not just the bash process.
+			setMigrationProcAttr(c)
 
 			output, err := c.CombinedOutput()
+			// Capture ctx.Err() before cancel() could modify context state
+			ctxErr := ctx.Err()
+			cancel()
 			outputStr := strings.TrimSpace(string(output))
 
 			if runMigrationVerbose && outputStr != "" {
@@ -369,14 +392,32 @@ func executeMigrationStep(_ *formula.Formula, cp *MigrationCheckpoint, step *for
 			}
 
 			if err != nil {
-				// Update checkpoint: step failed
+				// Distinguish timeout from other failures
+				errMsg := fmt.Sprintf("command failed: %s\nerror: %v\noutput: %s", cmdStr, err, outputStr)
+				if ctxErr == context.DeadlineExceeded {
+					errMsg = fmt.Sprintf("command timed out after %s: %s\noutput: %s", runMigrationTimeout, cmdStr, outputStr)
+				}
+
+				// Update checkpoint: step failed (preserving commands_completed for retry)
 				sr.Status = "failed"
-				sr.Error = fmt.Sprintf("command failed: %s\nerror: %v\noutput: %s", cmdStr, err, outputStr)
+				sr.Error = errMsg
 				sr.CompletedAt = time.Now()
 				cp.Steps[step.ID] = sr
-				_ = saveMigrationCheckpoint(townRoot, cp)
+				if saveErr := saveMigrationCheckpoint(townRoot, cp); saveErr != nil {
+					fmt.Fprintf(os.Stderr, "    %s failed to save checkpoint: %v\n", style.Bold.Render("warning:"), saveErr)
+				}
 
+				if ctxErr == context.DeadlineExceeded {
+					return fmt.Errorf("command timed out after %s: %s\n  output: %s", runMigrationTimeout, cmdStr, truncateOutput(outputStr, 500))
+				}
 				return fmt.Errorf("command failed: %s\n  %v\n  output: %s", cmdStr, err, truncateOutput(outputStr, 500))
+			}
+
+			// Track per-command progress
+			sr.CommandsCompleted = cmdIdx + 1
+			cp.Steps[step.ID] = sr
+			if saveErr := saveMigrationCheckpoint(townRoot, cp); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "    %s failed to save checkpoint: %v\n", style.Bold.Render("warning:"), saveErr)
 			}
 
 			// Capture last output for checkpoint
@@ -460,6 +501,9 @@ func isCommentOnly(block string) bool {
 func truncateOutput(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
+	}
+	if maxLen < 4 {
+		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
 }

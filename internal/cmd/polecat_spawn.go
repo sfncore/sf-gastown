@@ -8,16 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/constants"
-	"github.com/sfncore/sf-gastown/internal/events"
-	"github.com/sfncore/sf-gastown/internal/git"
-	"github.com/sfncore/sf-gastown/internal/polecat"
-	"github.com/sfncore/sf-gastown/internal/rig"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/tmux"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/doltserver"
+	"github.com/steveyegge/gastown/internal/events"
+	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/polecat"
+	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // SpawnedPolecatInfo contains info about a spawned polecat session.
@@ -27,7 +28,7 @@ type SpawnedPolecatInfo struct {
 	ClonePath   string // Path to polecat's git worktree
 	SessionName string // Tmux session name (e.g., "gt-gastown-p-Toast")
 	Pane        string // Tmux pane ID (empty until StartSession is called)
-	BaseBranch  string // Effective base branch (e.g., "main", "integration/epic-id")
+	DoltBranch  string // Dolt branch for write isolation (empty if not created)
 
 	// Internal fields for deferred session start
 	account string
@@ -46,12 +47,11 @@ func (s *SpawnedPolecatInfo) SessionStarted() bool {
 
 // SlingSpawnOptions contains options for spawning a polecat via sling.
 type SlingSpawnOptions struct {
-	Force      bool   // Force spawn even if polecat has uncommitted work
-	Account    string // Claude Code account handle to use
-	Create     bool   // Create polecat if it doesn't exist (currently always true for sling)
-	HookBead   string // Bead ID to set as hook_bead at spawn time (atomic assignment)
-	Agent      string // Agent override for this spawn (e.g., "gemini", "codex", "claude-haiku")
-	BaseBranch string // Override base branch for polecat worktree (e.g., "develop", "release/v2")
+	Force    bool   // Force spawn even if polecat has uncommitted work
+	Account  string // Claude Code account handle to use
+	Create   bool   // Create polecat if it doesn't exist (currently always true for sling)
+	HookBead string // Bead ID to set as hook_bead at spawn time (atomic assignment)
+	Agent    string // Agent override for this spawn (e.g., "gemini", "codex", "claude-haiku")
 }
 
 // SpawnPolecatForSling creates a fresh polecat and optionally starts its session.
@@ -83,6 +83,18 @@ func SpawnPolecatForSling(rigName string, opts SlingSpawnOptions) (*SpawnedPolec
 	t := tmux.NewTmux()
 	polecatMgr := polecat.NewManager(r, polecatGit, t)
 
+	// Pre-spawn Dolt health check (gt-94llt7): verify Dolt is reachable before
+	// allocating a polecat. Prevents orphaned polecats when Dolt is down.
+	if err := polecatMgr.CheckDoltHealth(); err != nil {
+		return nil, fmt.Errorf("pre-spawn health check failed: %w", err)
+	}
+
+	// Pre-spawn admission control (gt-1obzke): verify Dolt server has connection
+	// capacity before spawning. Prevents connection storms during mass sling.
+	if err := polecatMgr.CheckDoltServerCapacity(); err != nil {
+		return nil, fmt.Errorf("admission control: %w", err)
+	}
+
 	// Allocate a new polecat name
 	polecatName, err := polecatMgr.AllocateName()
 	if err != nil {
@@ -93,35 +105,9 @@ func SpawnPolecatForSling(rigName string, opts SlingSpawnOptions) (*SpawnedPolec
 	// Check if polecat already exists (shouldn't happen - indicates stale state needing repair)
 	existingPolecat, err := polecatMgr.Get(polecatName)
 
-	// Determine base branch for polecat worktree
-	baseBranch := opts.BaseBranch
-	if baseBranch == "" && opts.HookBead != "" {
-		// Auto-detect: check if the hooked bead's parent epic has an integration branch
-		settingsPath := filepath.Join(r.Path, "settings", "config.json")
-		polecatIntegrationEnabled := true
-		if settings, err := config.LoadRigSettings(settingsPath); err == nil && settings.MergeQueue != nil {
-			polecatIntegrationEnabled = settings.MergeQueue.IsPolecatIntegrationEnabled()
-		}
-		if polecatIntegrationEnabled {
-			repoGit, repoErr := getRigGit(r.Path)
-			if repoErr == nil {
-				bd := beads.New(r.Path)
-				detected, detectErr := beads.DetectIntegrationBranch(bd, repoGit, opts.HookBead)
-				if detectErr == nil && detected != "" {
-					baseBranch = "origin/" + detected
-					fmt.Printf("  Auto-detected integration branch: %s\n", detected)
-				}
-			}
-		}
-	}
-	if baseBranch != "" && !strings.HasPrefix(baseBranch, "origin/") {
-		baseBranch = "origin/" + baseBranch
-	}
-
 	// Build add options with hook_bead set atomically at spawn time
 	addOpts := polecat.AddOptions{
-		HookBead:   opts.HookBead,
-		BaseBranch: baseBranch,
+		HookBead: opts.HookBead,
 	}
 
 	if err == nil {
@@ -177,6 +163,22 @@ func SpawnPolecatForSling(rigName string, opts SlingSpawnOptions) (*SpawnedPolec
 			polecatName, err, rigName, polecatName)
 	}
 
+	// Branch-per-polecat: create a Dolt branch for write isolation.
+	// Each polecat writes to its own branch (zero contention).
+	// Merge to main happens at gt done time.
+	// This is a hard error: falling back to main causes all polecats to
+	// write to the same branch, triggering optimistic lock storms and
+	// potentially read-only mode under load (gt-lfc0d).
+	var doltBranch string
+	doltBranchName := doltserver.PolecatBranchName(polecatName)
+	if err := doltserver.CreatePolecatBranch(townRoot, rigName, doltBranchName); err != nil {
+		// Clean up the polecat since it can't safely operate without branch isolation
+		_ = polecatMgr.Remove(polecatName, true)
+		return nil, fmt.Errorf("creating Dolt branch for %s: %w\nHint: Dolt server may be overloaded — check 'gt dolt health'", polecatName, err)
+	}
+	doltBranch = doltBranchName
+	fmt.Printf("%s Dolt branch: %s\n", style.Bold.Render("✓"), doltBranch)
+
 	// Get session manager for session name (session start is deferred)
 	polecatSessMgr := polecat.NewSessionManager(t, r)
 	sessionName := polecatSessMgr.SessionName(polecatName)
@@ -186,19 +188,13 @@ func SpawnPolecatForSling(rigName string, opts SlingSpawnOptions) (*SpawnedPolec
 	// Log spawn event to activity feed
 	_ = events.LogFeed(events.TypeSpawn, "gt", events.SpawnPayload(rigName, polecatName))
 
-	// Compute effective base branch (strip origin/ prefix since formula prepends it)
-	effectiveBranch := strings.TrimPrefix(baseBranch, "origin/")
-	if effectiveBranch == "" {
-		effectiveBranch = "main"
-	}
-
 	return &SpawnedPolecatInfo{
 		RigName:     rigName,
 		PolecatName: polecatName,
 		ClonePath:   polecatObj.ClonePath,
 		SessionName: sessionName,
 		Pane:        "", // Empty until StartSession is called
-		BaseBranch:  effectiveBranch,
+		DoltBranch:  doltBranch,
 		account:     opts.Account,
 		agent:       opts.Agent,
 	}, nil
@@ -246,6 +242,7 @@ func (s *SpawnedPolecatInfo) StartSession() (string, error) {
 	fmt.Printf("Starting session for %s/%s...\n", s.RigName, s.PolecatName)
 	startOpts := polecat.SessionStartOptions{
 		RuntimeConfigDir: claudeConfigDir,
+		DoltBranch:       s.DoltBranch,
 	}
 	if s.agent != "" {
 		cmd, err := config.BuildPolecatStartupCommandWithAgentOverride(s.RigName, s.PolecatName, r.Path, "", s.agent)
@@ -265,22 +262,31 @@ func (s *SpawnedPolecatInfo) StartSession() (string, error) {
 		fmt.Printf("Warning: runtime may not be fully ready: %v\n", err)
 	}
 
-	// Update agent state
+	// Update agent state with retry logic (gt-94llt7: fail-safe Dolt writes).
+	// Note: warn-only, not fail-hard. The tmux session is already started above,
+	// so returning an error here would leave an orphaned session with no cleanup path.
+	// The polecat can still function without the agent state update — it only affects
+	// monitoring visibility, not correctness. Compare with createAgentBeadWithRetry
+	// which fails hard because a polecat without an agent bead is untrackable.
 	polecatGit := git.NewGit(r.Path)
 	polecatMgr := polecat.NewManager(r, polecatGit, t)
-	if err := polecatMgr.SetAgentState(s.PolecatName, "working"); err != nil {
-		fmt.Printf("Warning: could not update agent state: %v\n", err)
+	if err := polecatMgr.SetAgentStateWithRetry(s.PolecatName, "working"); err != nil {
+		fmt.Printf("Warning: could not update agent state after retries: %v\n", err)
 	}
 
-	// Update issue status from hooked to in_progress
+	// Update issue status from hooked to in_progress.
+	// Also warn-only for the same reason: session is already running.
 	if err := polecatMgr.SetState(s.PolecatName, polecat.StateWorking); err != nil {
 		fmt.Printf("Warning: could not update issue status to in_progress: %v\n", err)
 	}
 
-	// Get pane
+	// Get pane — if this fails, the session may have died during startup.
+	// Kill the dead session to prevent "session already running" on next attempt (gt-jn40ft).
 	pane, err := getSessionPane(s.SessionName)
 	if err != nil {
-		return "", fmt.Errorf("getting pane for %s: %w", s.SessionName, err)
+		// Session likely died — clean up the tmux session so it doesn't block re-sling
+		_ = t.KillSession(s.SessionName)
+		return "", fmt.Errorf("getting pane for %s (session likely died during startup): %w", s.SessionName, err)
 	}
 
 	s.Pane = pane
