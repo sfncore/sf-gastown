@@ -2,7 +2,7 @@
 package session
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
+	"github.com/steveyegge/gastown/internal/cli"
 	"fmt"
 	"time"
 )

@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/doctor"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/doctor"
+	"github.com/steveyegge/gastown/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

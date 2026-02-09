@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 // AgentTmuxConfigCheck verifies that all configured agents have proper Tmux defaults.

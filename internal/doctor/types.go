@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/ui"
+	"github.com/steveyegge/gastown/internal/ui"
 )
 
 // Category constants for grouping checks

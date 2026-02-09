@@ -3,7 +3,7 @@ package web
 import (
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/activity"
+	"github.com/steveyegge/gastown/internal/activity"
 )
 
 func TestCalculateWorkStatus(t *testing.T) {

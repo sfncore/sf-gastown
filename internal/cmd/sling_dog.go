@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/dog"
-	"github.com/sfncore/sf-gastown/internal/tmux"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/dog"
+	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // IsDogTarget checks if target is a dog target pattern.

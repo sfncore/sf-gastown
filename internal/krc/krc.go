@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/events"
+	"github.com/steveyegge/gastown/internal/events"
 )
 
 // Config defines TTL settings for ephemeral records.

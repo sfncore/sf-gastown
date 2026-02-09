@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sfncore/sf-gastown/internal/runtime"
+	"github.com/steveyegge/gastown/internal/runtime"
 )
 
 // Common errors

@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
+	"github.com/steveyegge/gastown/internal/cli"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/constants"
-	"github.com/sfncore/sf-gastown/internal/tmux"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // resolveBeadDir returns the directory to run bd commands for a given bead ID.

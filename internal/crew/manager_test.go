@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/git"
-	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/rig"
 )
 
 func TestManagerAddAndGet(t *testing.T) {

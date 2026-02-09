@@ -6,7 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/hooks"
+	"github.com/steveyegge/gastown/internal/hooks"
 )
 
 var hooksOverrideCmd = &cobra.Command{

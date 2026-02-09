@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 func TestGetPrefixForRig(t *testing.T) {

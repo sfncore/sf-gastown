@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 // RoleConfigCheck verifies that role configuration is valid.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/rig"
 )
 
 func TestDefaultMergeQueueConfig(t *testing.T) {

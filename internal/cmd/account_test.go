@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 // setupTestTownForAccount creates a minimal Gas Town workspace with accounts.

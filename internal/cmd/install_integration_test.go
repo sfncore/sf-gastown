@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 // TestInstallCreatesCorrectStructure validates that a fresh gt install

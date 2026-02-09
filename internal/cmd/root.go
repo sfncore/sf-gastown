@@ -7,12 +7,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/cli"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/ui"
-	"github.com/sfncore/sf-gastown/internal/version"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/cli"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/ui"
+	"github.com/steveyegge/gastown/internal/version"
+	"github.com/steveyegge/gastown/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/mail"
-	"github.com/sfncore/sf-gastown/internal/session"
-	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/mail"
+	"github.com/steveyegge/gastown/internal/session"
+	"github.com/steveyegge/gastown/internal/style"
 )
 
 // getMailbox returns the mailbox for the given address.

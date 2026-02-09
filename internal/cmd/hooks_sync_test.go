@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/hooks"
+	"github.com/steveyegge/gastown/internal/hooks"
 )
 
 func TestSyncTargetCreatesNew(t *testing.T) {

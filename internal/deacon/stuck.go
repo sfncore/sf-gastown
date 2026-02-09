@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/beads"
 )
 
 // Default parameters for stuck-session detection.

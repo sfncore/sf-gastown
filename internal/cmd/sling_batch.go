@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/events"
-	"github.com/sfncore/sf-gastown/internal/git"
-	"github.com/sfncore/sf-gastown/internal/polecat"
-	"github.com/sfncore/sf-gastown/internal/rig"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/tmux"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/events"
+	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/polecat"
+	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // runBatchSling handles slinging multiple beads to a rig.
@@ -104,12 +104,11 @@ func runBatchSling(beadIDs []string, rigName string, townBeadsDir string) error 
 
 		// Spawn a fresh polecat
 		spawnOpts := SlingSpawnOptions{
-			Force:      slingForce,
-			Account:    slingAccount,
-			Create:     slingCreate,
-			HookBead:   beadID, // Set atomically at spawn time
-			Agent:      slingAgent,
-			BaseBranch: slingBaseBranch,
+			Force:    slingForce,
+			Account:  slingAccount,
+			Create:   slingCreate,
+			HookBead: beadID, // Set atomically at spawn time
+			Agent:    slingAgent,
 		}
 		spawnInfo, err := SpawnPolecatForSling(rigName, spawnOpts)
 		if err != nil {
@@ -153,9 +152,6 @@ func runBatchSling(beadIDs []string, rigName string, townBeadsDir string) error 
 		if formulaCooked {
 			// Build per-bead vars (copy slingVars to avoid mutating shared slice across iterations)
 			batchVars := slingVars
-			if spawnInfo.BaseBranch != "" && spawnInfo.BaseBranch != "main" {
-				batchVars = append(append([]string{}, slingVars...), fmt.Sprintf("base_branch=%s", spawnInfo.BaseBranch))
-			}
 			result, err := InstantiateFormulaOnBead(formulaName, beadID, info.Title, hookWorkDir, townRoot, true, batchVars)
 			if err != nil {
 				fmt.Printf("  %s Could not apply formula: %v (hooking raw bead)\n", style.Dim.Render("Warning:"), err)

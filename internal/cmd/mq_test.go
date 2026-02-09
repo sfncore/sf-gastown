@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/beads"
 )
 
 func TestParseBranchName(t *testing.T) {

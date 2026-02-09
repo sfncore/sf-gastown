@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/style"
 )
 
 var beadCmd = &cobra.Command{

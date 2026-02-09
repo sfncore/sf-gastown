@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/git"
 )
 
 func setupTestTown(t *testing.T) (string, *config.RigsConfig) {

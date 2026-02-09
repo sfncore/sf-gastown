@@ -3,7 +3,7 @@ package doctor
 import (
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/config"
 )
 
 func TestAgentTmuxConfigCheck_Name(t *testing.T) {

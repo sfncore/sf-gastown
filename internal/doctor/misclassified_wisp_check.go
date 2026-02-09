@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/beads"
 )
 
 // CheckMisclassifiedWisps detects issues that should be marked as wisps but aren't.

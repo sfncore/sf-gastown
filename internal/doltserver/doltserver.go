@@ -44,8 +44,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/util"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/util"
 )
 
 // Default configuration

@@ -8,7 +8,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/sfncore/sf-gastown/internal/util"
+	"github.com/steveyegge/gastown/internal/util"
 )
 
 const (

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/rig"
-	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/tmux"
 )
 
 func requireTmux(t *testing.T) {

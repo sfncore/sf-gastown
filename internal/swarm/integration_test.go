@@ -3,7 +3,7 @@ package swarm
 import (
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/rig"
+	"github.com/steveyegge/gastown/internal/rig"
 )
 
 func TestGetWorkerBranch(t *testing.T) {

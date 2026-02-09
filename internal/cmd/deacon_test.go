@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/tmux"
 )
 
 // TestDeaconStartup_SleepForReadyDelay verifies that SleepForReadyDelay is called

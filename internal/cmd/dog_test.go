@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/dog"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/dog"
 )
 
 // =============================================================================

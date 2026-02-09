@@ -39,7 +39,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // State represents the keepalive file contents.

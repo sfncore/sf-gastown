@@ -1,7 +1,7 @@
 package doctor
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
+	"github.com/steveyegge/gastown/internal/cli"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/constants"
 )
 
 // PrimingCheck verifies the priming subsystem is correctly configured.

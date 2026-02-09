@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/mail"
+	"github.com/steveyegge/gastown/internal/mail"
 )
 
 func TestParseMessageType(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/constants"
 )
 
 // typesSentinel is a marker file indicating custom types have been configured.

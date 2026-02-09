@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	"github.com/sfncore/sf-gastown/internal/cli"
+	"github.com/steveyegge/gastown/internal/cli"
 	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/sfncore/sf-gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/style"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

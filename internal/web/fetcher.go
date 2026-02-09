@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/activity"
-	"github.com/sfncore/sf-gastown/internal/config"
-	"github.com/sfncore/sf-gastown/internal/session"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/activity"
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/session"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 // Command timeout constants

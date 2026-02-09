@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/workspace"
 )
 
 func TestHandoffStdinFlag(t *testing.T) {

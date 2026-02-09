@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
-	"github.com/sfncore/sf-gastown/internal/checkpoint"
-	"github.com/sfncore/sf-gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/checkpoint"
+	"github.com/steveyegge/gastown/internal/constants"
 )
 
 func writeTestRoutes(t *testing.T, townRoot string, routes []beads.Route) {

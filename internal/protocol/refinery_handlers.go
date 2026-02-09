@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/sfncore/sf-gastown/internal/mail"
+	"github.com/steveyegge/gastown/internal/mail"
 )
 
 // DefaultRefineryHandler provides the default implementation for Refinery protocol handlers.

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/daemon"
-	"github.com/sfncore/sf-gastown/internal/doltserver"
-	"github.com/sfncore/sf-gastown/internal/style"
-	"github.com/sfncore/sf-gastown/internal/workspace"
+	"github.com/steveyegge/gastown/internal/daemon"
+	"github.com/steveyegge/gastown/internal/doltserver"
+	"github.com/steveyegge/gastown/internal/style"
+	"github.com/steveyegge/gastown/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

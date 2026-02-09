@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sfncore/sf-gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/beads"
 )
 
 // RunResult represents the outcome of a plugin execution.
