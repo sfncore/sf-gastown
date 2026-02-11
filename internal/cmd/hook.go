@@ -146,10 +146,7 @@ func init() {
 func runHookOrStatus(cmd *cobra.Command, args []string) error {
 	// --clear flag is alias for 'gt unhook'
 	if hookClear {
-		// Pass through dry-run and force flags
-		unslingDryRun = hookDryRun
-		unslingForce = hookForce
-		return runUnsling(cmd, args)
+		return runUnslingWith(cmd, args, hookDryRun, hookForce)
 	}
 	if len(args) == 0 {
 		// No args - show status
@@ -161,10 +158,7 @@ func runHookOrStatus(cmd *cobra.Command, args []string) error {
 
 // runHookClear handles 'gt hook clear' - delegates to runUnsling
 func runHookClear(cmd *cobra.Command, args []string) error {
-	// Pass through dry-run and force flags from hookClearCmd to unsling
-	unslingDryRun = hookDryRun
-	unslingForce = hookForce
-	return runUnsling(cmd, args)
+	return runUnslingWith(cmd, args, hookDryRun, hookForce)
 }
 
 func runHook(_ *cobra.Command, args []string) error {
@@ -288,7 +282,7 @@ func runHook(_ *cobra.Command, args []string) error {
 	const hookBackoffMax = 10 * time.Second
 	var lastHookErr error
 	for attempt := 1; attempt <= hookMaxRetries; attempt++ {
-		hookBdCmd := exec.Command("bd", "--no-daemon", "update", beadID, "--status=hooked", "--assignee="+agentID)
+		hookBdCmd := exec.Command("bd", "update", beadID, "--status=hooked", "--assignee="+agentID)
 		hookBdCmd.Dir = townRoot
 		hookBdCmd.Stderr = os.Stderr
 		if err := hookBdCmd.Run(); err != nil {

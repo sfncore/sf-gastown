@@ -21,10 +21,10 @@ import (
 	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/constants"
 	"github.com/steveyegge/gastown/internal/deacon"
+	"github.com/steveyegge/gastown/internal/doltserver"
 	"github.com/steveyegge/gastown/internal/events"
 	"github.com/steveyegge/gastown/internal/feed"
 	"github.com/steveyegge/gastown/internal/polecat"
-	"github.com/steveyegge/gastown/internal/doltserver"
 	"github.com/steveyegge/gastown/internal/refinery"
 	"github.com/steveyegge/gastown/internal/rig"
 	"github.com/steveyegge/gastown/internal/session"
@@ -39,12 +39,12 @@ import (
 // This is recovery-focused: normal wake is handled by feed subscription (bd activity --follow).
 // The daemon is the safety net for dead sessions, GUPP violations, and orphaned work.
 type Daemon struct {
-	config       *Config
-	patrolConfig *DaemonPatrolConfig
-	tmux         *tmux.Tmux
-	logger       *log.Logger
-	ctx          context.Context
-	cancel       context.CancelFunc
+	config        *Config
+	patrolConfig  *DaemonPatrolConfig
+	tmux          *tmux.Tmux
+	logger        *log.Logger
+	ctx           context.Context
+	cancel        context.CancelFunc
 	curator       *feed.Curator
 	convoyWatcher *ConvoyWatcher
 	doltServer    *DoltServerManager
@@ -164,7 +164,6 @@ func (d *Daemon) Run() error {
 	defer func() { _ = fileLock.Unlock() }()
 
 	// Pre-flight check: all rigs must be on Dolt backend.
-	// Refuse to start if any rig is still on SQLite.
 	if err := d.checkAllRigsDolt(); err != nil {
 		return err
 	}
@@ -413,7 +412,6 @@ func (d *Daemon) ensureDoltServerRunning() {
 }
 
 // checkAllRigsDolt verifies all rigs are using the Dolt backend.
-// Returns an error if any rig is on SQLite, preventing daemon startup.
 func (d *Daemon) checkAllRigsDolt() error {
 	var problems []string
 
@@ -450,9 +448,6 @@ func readBeadsBackend(beadsDir string) string {
 	metadataPath := filepath.Join(beadsDir, "metadata.json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
-		if _, statErr := os.Stat(filepath.Join(beadsDir, "beads.db")); statErr == nil {
-			return "sqlite"
-		}
 		return ""
 	}
 
@@ -463,9 +458,6 @@ func readBeadsBackend(beadsDir string) string {
 		return ""
 	}
 
-	if metadata.Backend == "" {
-		return "sqlite" // Default to SQLite if backend not specified
-	}
 	return metadata.Backend
 }
 
@@ -955,7 +947,7 @@ func (d *Daemon) processLifecycleRequests() {
 // 1. Pipe issues from errant db to town db (bd export | bd import)
 // 2. Remove the errant .beads directory
 //
-// This uses bd export/import which are backend-agnostic (work with SQLite or Dolt).
+// This uses bd export/import which are backend-agnostic.
 func (d *Daemon) cleanupTownServiceBeads() {
 	// Town-level service directories that should NOT have their own .beads
 	serviceDirs := []string{"mayor", "deacon"}
@@ -978,7 +970,7 @@ func (d *Daemon) cleanupTownServiceBeads() {
 
 		// Check if it has database files (the actual problem)
 		hasDB := false
-		dbPatterns := []string{"*.db", "beads.db", "hq.db", "dolt"}
+		dbPatterns := []string{"*.db", "dolt"}
 		for _, pattern := range dbPatterns {
 			matches, _ := filepath.Glob(filepath.Join(svcBeadsDir, pattern))
 			if len(matches) > 0 {
@@ -994,7 +986,7 @@ func (d *Daemon) cleanupTownServiceBeads() {
 		d.logger.Printf("Found errant .beads in %s - migrating to town beads", svc)
 
 		// Migrate: pipe export from errant db directly to import in town db
-		// This avoids temporary files and is backend-agnostic (works with SQLite or Dolt)
+		// This avoids temporary files and is backend-agnostic
 		if err := d.migrateBeadsToTown(svcBeadsDir, townBeadsDir); err != nil {
 			d.logger.Printf("Warning: failed to migrate %s/.beads: %v", svc, err)
 			continue
@@ -1010,19 +1002,19 @@ func (d *Daemon) cleanupTownServiceBeads() {
 }
 
 // migrateBeadsToTown pipes issues from source beads dir to town beads dir.
-// Uses bd export | bd import which is backend-agnostic (works with SQLite or Dolt).
+// Uses bd export | bd import which is backend-agnostic.
 func (d *Daemon) migrateBeadsToTown(srcBeadsDir, dstBeadsDir string) error {
 	// Kill any bd daemon for the source beads directory first.
 	// The daemon holds the database lock, preventing export from reading.
 	d.killBeadsDaemon(srcBeadsDir)
 
 	// Set up export command (reads from source)
-	exportCmd := exec.Command(d.bdPath, "export", "--no-daemon")
+	exportCmd := exec.Command(d.bdPath, "export")
 	exportCmd.Env = append(os.Environ(), "BEADS_DIR="+srcBeadsDir)
 	exportCmd.Dir = filepath.Dir(srcBeadsDir)
 
 	// Set up import command (writes to destination)
-	importCmd := exec.Command(d.bdPath, "import", "--no-daemon")
+	importCmd := exec.Command(d.bdPath, "import")
 	importCmd.Env = append(os.Environ(), "BEADS_DIR="+dstBeadsDir)
 	importCmd.Dir = filepath.Dir(dstBeadsDir)
 
@@ -1475,6 +1467,14 @@ func (d *Daemon) checkPolecatHealth(rigName, polecatName string) {
 		return
 	}
 
+	// TOCTOU guard: re-verify session is still dead before restarting.
+	// Between the initial check and now, the session may have been restarted
+	// by another heartbeat cycle, witness, or the polecat itself.
+	sessionRevived, err := d.tmux.HasSession(sessionName)
+	if err == nil && sessionRevived {
+		return // Session came back - no restart needed
+	}
+
 	// Polecat has work but session is dead - this is a crash!
 	d.logger.Printf("CRASH DETECTED: polecat %s/%s has hook_bead=%s but session %s is dead",
 		rigName, polecatName, info.HookBead, sessionName)
@@ -1577,11 +1577,10 @@ func (d *Daemon) restartPolecatSession(rigName, polecatName, sessionName string)
 
 	// Set environment variables using centralized AgentEnv
 	envVars := config.AgentEnv(config.AgentEnvConfig{
-		Role:          "polecat",
-		Rig:           rigName,
-		AgentName:     polecatName,
-		TownRoot:      d.config.TownRoot,
-		BeadsNoDaemon: true,
+		Role:      "polecat",
+		Rig:       rigName,
+		AgentName: polecatName,
+		TownRoot:  d.config.TownRoot,
 	})
 
 	// Set all env vars in tmux session (for debugging) and they'll also be exported to Claude

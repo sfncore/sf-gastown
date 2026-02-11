@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/steveyegge/gastown/internal/cli"
 	"bytes"
 	"fmt"
+	"github.com/steveyegge/gastown/internal/cli"
 	"os"
 	"os/exec"
 	"strings"
@@ -23,7 +23,6 @@ type PatrolConfig struct {
 	HeaderTitle     string   // "Patrol Status", etc.
 	WorkLoopSteps   []string // role-specific instructions
 	CheckInProgress bool     // whether to check in_progress status first (witness/refinery do, deacon doesn't)
-	ExtraVars       []string // additional --var key=value args for wisp creation
 }
 
 // findActivePatrol finds an active patrol molecule for the role.
@@ -31,7 +30,7 @@ type PatrolConfig struct {
 func findActivePatrol(cfg PatrolConfig) (patrolID, patrolLine string, found bool) {
 	// Check for in-progress patrol first (if configured)
 	if cfg.CheckInProgress {
-		cmdList := exec.Command("bd", "--no-daemon", "list", "--status=in_progress", "--type=epic")
+		cmdList := exec.Command("bd", "list", "--status=in_progress", "--type=epic")
 		cmdList.Dir = cfg.BeadsDir
 		var stdoutList, stderrList bytes.Buffer
 		cmdList.Stdout = &stdoutList
@@ -70,7 +69,7 @@ func findActivePatrol(cfg PatrolConfig) (patrolID, patrolLine string, found bool
 
 // findPatrolByStatus searches for a patrol molecule with the given status.
 func findPatrolByStatus(cfg PatrolConfig, status string) (patrolID, patrolLine string, found bool) {
-	cmdList := exec.Command("bd", "--no-daemon", "list", "--status="+status, "--type=epic")
+	cmdList := exec.Command("bd", "list", "--status="+status, "--type=epic")
 	cmdList.Dir = cfg.BeadsDir
 	var stdoutList, stderrList bytes.Buffer
 	cmdList.Stdout = &stdoutList
@@ -132,11 +131,7 @@ func autoSpawnPatrol(cfg PatrolConfig) (string, error) {
 	}
 
 	// Create the patrol wisp
-	spawnArgs := []string{"--no-daemon", "mol", "wisp", "create", protoID, "--actor", cfg.RoleName}
-	for _, v := range cfg.ExtraVars {
-		spawnArgs = append(spawnArgs, "--var", v)
-	}
-	cmdSpawn := exec.Command("bd", spawnArgs...)
+	cmdSpawn := exec.Command("bd", "mol", "wisp", "create", protoID, "--actor", cfg.RoleName)
 	cmdSpawn.Dir = cfg.BeadsDir
 	var stdoutSpawn, stderrSpawn bytes.Buffer
 	cmdSpawn.Stdout = &stdoutSpawn
@@ -177,7 +172,7 @@ func autoSpawnPatrol(cfg PatrolConfig) (string, error) {
 	}
 
 	// Hook the wisp to the agent so gt mol status sees it
-	cmdPin := exec.Command("bd", "--no-daemon", "update", patrolID, "--status=hooked", "--assignee="+cfg.Assignee)
+	cmdPin := exec.Command("bd", "update", patrolID, "--status=hooked", "--assignee="+cfg.Assignee)
 	cmdPin.Dir = cfg.BeadsDir
 	if err := cmdPin.Run(); err != nil {
 		return patrolID, fmt.Errorf("created wisp %s but failed to hook", patrolID)

@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -162,11 +160,9 @@ func runBatchSling(beadIDs []string, rigName string, townBeadsDir string) error 
 			}
 		}
 
-		// Hook the bead (or wisp compound if formula was applied)
-		hookCmd := exec.Command("bd", "--no-daemon", "update", beadToHook, "--status=hooked", "--assignee="+targetAgent)
-		hookCmd.Dir = beads.ResolveHookDir(townRoot, beadToHook, hookWorkDir)
-		hookCmd.Stderr = os.Stderr
-		if err := hookCmd.Run(); err != nil {
+		// Hook the bead (or wisp compound if formula was applied) with retry
+		hookDir := beads.ResolveHookDir(townRoot, beadToHook, hookWorkDir)
+		if err := hookBeadWithRetry(beadToHook, targetAgent, hookDir); err != nil {
 			results = append(results, slingResult{beadID: beadID, polecat: spawnInfo.PolecatName, success: false, errMsg: "hook failed"})
 			fmt.Printf("  %s Failed to hook bead: %v\n", style.Dim.Render("✗"), err)
 			// Clean up orphaned polecat to avoid leaving spawned-but-unhookable polecats
@@ -201,7 +197,10 @@ func runBatchSling(beadIDs []string, rigName string, townBeadsDir string) error 
 		// This ensures polecat sees its work when gt prime runs on session start.
 		pane, err := spawnInfo.StartSession()
 		if err != nil {
-			fmt.Printf("  %s Could not start session: %v (agent will need manual start)\n", style.Dim.Render("✗"), err)
+			fmt.Printf("  %s Could not start session: %v, cleaning up partial state...\n", style.Dim.Render("✗"), err)
+			cleanupSpawnedPolecat(spawnInfo, rigName)
+			results = append(results, slingResult{beadID: beadID, polecat: spawnInfo.PolecatName, success: false})
+			continue
 		} else {
 			fmt.Printf("  %s Session started for %s\n", style.Bold.Render("▶"), spawnInfo.PolecatName)
 			// Fresh polecats get StartupNudge from SessionManager.Start(),

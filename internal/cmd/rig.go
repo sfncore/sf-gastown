@@ -429,16 +429,16 @@ func runRigAdd(cmd *cobra.Command, args []string) error {
 	// Create rig identity bead
 	if newRig.Config.Prefix != "" && beadsWorkDir != "" {
 		bd := beads.New(beadsWorkDir)
-		rigBeadID := beads.RigBeadIDWithPrefix(newRig.Config.Prefix, name)
 		fields := &beads.RigFields{
 			Repo:   gitURL,
 			Prefix: newRig.Config.Prefix,
-			State:  "active",
+			State:  beads.RigStateActive,
 		}
-		if _, err := bd.CreateRigBead(rigBeadID, name, fields); err != nil {
+		if _, err := bd.CreateRigBead(name, fields); err != nil {
 			// Non-fatal: rig is functional without the identity bead
 			fmt.Printf("  %s Could not create rig identity bead: %v\n", style.Warning.Render("!"), err)
 		} else {
+			rigBeadID := beads.RigBeadIDWithPrefix(newRig.Config.Prefix, name)
 			fmt.Printf("  Created rig identity bead: %s\n", rigBeadID)
 		}
 	}
@@ -650,7 +650,7 @@ func runRigAdopt(_ *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check for tracked beads and initialize beads.db if missing (Issue #72)
+	// Check for tracked beads and initialize database if missing (Issue #72)
 	rigPath := filepath.Join(townRoot, name)
 	beadsDirCandidates := []string{
 		filepath.Join(rigPath, ".beads"),
@@ -661,50 +661,79 @@ func runRigAdopt(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Detect prefix from issues.jsonl (prefix is stored in DB, not config.yaml)
-		jsonlPath := filepath.Join(beadsDir, "issues.jsonl")
-		if f, readErr := os.Open(jsonlPath); readErr == nil {
-			scanner := bufio.NewScanner(f)
-			if scanner.Scan() {
-				var issue struct {
-					ID string `json:"id"`
-				}
-				if json.Unmarshal(scanner.Bytes(), &issue) == nil && issue.ID != "" {
-					// Extract prefix: everything before the last "-" segment
-					if lastDash := strings.LastIndex(issue.ID, "-"); lastDash > 0 {
-						detected := issue.ID[:lastDash]
-						if detected != "" && rigAddPrefix != "" {
-							if strings.TrimSuffix(rigAddPrefix, "-") != detected {
-								f.Close()
-								return fmt.Errorf("prefix mismatch: source repo uses '%s' but --prefix '%s' was provided", detected, rigAddPrefix)
-							}
+		// Detect prefix: try dolt backend first, fall back to issues.jsonl.
+		// With dolt, metadata.json and the database survive clone, so we can
+		// query the prefix directly via "bd config get issue_prefix".
+		prefixDetected := false
+		metadataPath := filepath.Join(beadsDir, "metadata.json")
+		if metaBytes, readErr := os.ReadFile(metadataPath); readErr == nil {
+			var meta struct {
+				Backend string `json:"backend"`
+			}
+			if json.Unmarshal(metaBytes, &meta) == nil && meta.Backend == "dolt" {
+				workDir := filepath.Dir(beadsDir)
+				bdCmd := exec.Command("bd", "config", "get", "issue_prefix")
+				bdCmd.Dir = workDir
+				if out, bdErr := bdCmd.Output(); bdErr == nil {
+					detected := strings.TrimSpace(string(out))
+					if detected != "" {
+						if rigAddPrefix != "" && strings.TrimSuffix(rigAddPrefix, "-") != detected {
+							return fmt.Errorf("prefix mismatch: source repo uses '%s' but --prefix '%s' was provided", detected, rigAddPrefix)
 						}
-						if detected != "" && result.BeadsPrefix == "" {
+						if result.BeadsPrefix == "" {
 							result.BeadsPrefix = detected
 						}
+						prefixDetected = true
 					}
 				}
 			}
-			f.Close()
 		}
 
-		// Init beads.db if missing
-		beadsDB := filepath.Join(beadsDir, "beads.db")
-		if _, err := os.Stat(beadsDB); os.IsNotExist(err) {
+		// Fall back to issues.jsonl for non-dolt backends or if dolt detection failed
+		if !prefixDetected {
+			jsonlPath := filepath.Join(beadsDir, "issues.jsonl")
+			if f, readErr := os.Open(jsonlPath); readErr == nil {
+				scanner := bufio.NewScanner(f)
+				if scanner.Scan() {
+					var issue struct {
+						ID string `json:"id"`
+					}
+					if json.Unmarshal(scanner.Bytes(), &issue) == nil && issue.ID != "" {
+						// Extract prefix: everything before the last "-" segment
+						if lastDash := strings.LastIndex(issue.ID, "-"); lastDash > 0 {
+							detected := issue.ID[:lastDash]
+							if detected != "" && rigAddPrefix != "" {
+								if strings.TrimSuffix(rigAddPrefix, "-") != detected {
+									f.Close()
+									return fmt.Errorf("prefix mismatch: source repo uses '%s' but --prefix '%s' was provided", detected, rigAddPrefix)
+								}
+							}
+							if detected != "" && result.BeadsPrefix == "" {
+								result.BeadsPrefix = detected
+							}
+						}
+					}
+				}
+				f.Close()
+			}
+		}
+
+		// Init database if metadata.json is missing (DB files are gitignored)
+		metadataPath = filepath.Join(beadsDir, "metadata.json")
+		if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
 			prefix := result.BeadsPrefix
 			if prefix == "" {
 				break
 			}
-			// Remove stale WAL/SHM files that could cause SQLite errors
-			os.Remove(filepath.Join(beadsDir, "beads.db-wal"))
-			os.Remove(filepath.Join(beadsDir, "beads.db-shm"))
 			workDir := filepath.Dir(beadsDir) // directory containing .beads/
-			initCmd := exec.Command("bd", "--no-daemon", "init", "--prefix", prefix)
+			// IMPORTANT: Use --backend dolt --server to prevent SQLite creation.
+			// Gas Town rigs use Dolt server mode via the shared town Dolt sql-server.
+			initCmd := exec.Command("bd", "init", "--prefix", prefix, "--backend", "dolt", "--server")
 			initCmd.Dir = workDir
 			if output, initErr := initCmd.CombinedOutput(); initErr != nil {
 				fmt.Printf("  %s Could not init bd database: %v (%s)\n", style.Warning.Render("!"), initErr, strings.TrimSpace(string(output)))
 			} else {
-				fmt.Printf("  %s Initialized beads database\n", style.Success.Render("✓"))
+				fmt.Printf("  %s Initialized beads database (Dolt)\n", style.Success.Render("✓"))
 			}
 		}
 		break
@@ -1166,7 +1195,7 @@ func runRigShutdown(cmd *cobra.Command, args []string) error {
 	// 1. Stop all polecat sessions
 	t := tmux.NewTmux()
 	polecatMgr := polecat.NewSessionManager(t, r)
-	infos, err := polecatMgr.List()
+	infos, err := polecatMgr.ListPolecats()
 	if err == nil && len(infos) > 0 {
 		fmt.Printf("  Stopping %d polecat session(s)...\n", len(infos))
 		if err := polecatMgr.StopAll(rigShutdownForce); err != nil {
@@ -1319,9 +1348,20 @@ func runRigStatus(cmd *cobra.Command, args []string) error {
 				sessionIcon = style.Success.Render("●")
 			}
 
-			stateStr := string(p.State)
+			// Reconcile display state with tmux session liveness.
+			// Per gt-zecmc design: tmux is ground truth for observable states.
+			// If session is running but beads says done, the polecat is still alive.
+			// If session is dead but beads says working, the polecat is actually done.
+			displayState := p.State
+			if hasSession && displayState == polecat.StateDone {
+				displayState = polecat.StateWorking
+			} else if !hasSession && displayState.IsActive() {
+				displayState = polecat.StateDone
+			}
+
+			stateStr := string(displayState)
 			if p.Issue != "" {
-				stateStr = fmt.Sprintf("%s → %s", p.State, p.Issue)
+				stateStr = fmt.Sprintf("%s → %s", displayState, p.Issue)
 			}
 
 			fmt.Printf("  %s %s: %s\n", sessionIcon, p.Name, stateStr)
@@ -1433,7 +1473,7 @@ func runRigStop(cmd *cobra.Command, args []string) error {
 		// 1. Stop all polecat sessions
 		t := tmux.NewTmux()
 		polecatMgr := polecat.NewSessionManager(t, r)
-		infos, err := polecatMgr.List()
+		infos, err := polecatMgr.ListPolecats()
 		if err == nil && len(infos) > 0 {
 			fmt.Printf("  Stopping %d polecat session(s)...\n", len(infos))
 			if err := polecatMgr.StopAll(rigStopForce); err != nil {
@@ -1564,7 +1604,7 @@ func runRigRestart(cmd *cobra.Command, args []string) error {
 
 		// 1. Stop all polecat sessions
 		polecatMgr := polecat.NewSessionManager(t, r)
-		infos, err := polecatMgr.List()
+		infos, err := polecatMgr.ListPolecats()
 		if err == nil && len(infos) > 0 {
 			fmt.Printf("    Stopping %d polecat session(s)...\n", len(infos))
 			if err := polecatMgr.StopAll(rigRestartForce); err != nil {

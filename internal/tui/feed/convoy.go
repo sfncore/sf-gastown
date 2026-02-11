@@ -88,7 +88,7 @@ func FetchConvoys(townRoot string) (*ConvoyState, error) {
 
 // listConvoys returns convoys with the given status
 func listConvoys(beadsDir, status string) ([]convoyListItem, error) {
-	listArgs := []string{"list", "--type=convoy", "--status=" + status, "--json"}
+	listArgs := []string{"list", "--label=gt:convoy", "--status=" + status, "--json"}
 
 	ctx, cancel := context.WithTimeout(context.Background(), convoySubprocessTimeout)
 	defer cancel()
@@ -225,7 +225,7 @@ func refreshTrackedStatus(ctx context.Context, deps []struct {
 		return nil
 	}
 
-	args := []string{"--no-daemon", "show"}
+	args := []string{"show"}
 	for _, d := range deps {
 		args = append(args, d.ID)
 	}
@@ -376,4 +376,3 @@ func renderProgressBar(completed, total int) string {
 	bar := strings.Repeat("●", filled) + strings.Repeat("○", displayTotal-filled)
 	return ConvoyProgressStyle.Render(bar)
 }
-
