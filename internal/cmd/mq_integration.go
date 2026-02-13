@@ -109,8 +109,7 @@ func createLandWorktree(rigPath, startBranch string) (*git.Git, func(), error) {
 
 	// Create worktree checked out to the target branch.
 	// Use --force because the branch may already be checked out in refinery/rig.
-	// Use NoSparse variant since land worktrees are temporary and don't need .claude/ exclusion.
-	if err := bareGit.WorktreeAddExistingForceNoSparse(landPath, startBranch); err != nil {
+	if err := bareGit.WorktreeAddExistingForce(landPath, startBranch); err != nil {
 		return nil, noop, fmt.Errorf("creating land worktree: %w", err)
 	}
 

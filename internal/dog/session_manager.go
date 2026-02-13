@@ -2,16 +2,14 @@
 package dog
 
 import (
+	"github.com/steveyegge/gastown/internal/cli"
 	"errors"
 	"fmt"
-	"github.com/steveyegge/gastown/internal/cli"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/constants"
-	"github.com/steveyegge/gastown/internal/runtime"
 	"github.com/steveyegge/gastown/internal/session"
 	"github.com/steveyegge/gastown/internal/tmux"
 	"github.com/steveyegge/gastown/internal/workspace"
@@ -92,125 +90,45 @@ func (m *SessionManager) Start(dogName string, opts SessionStartOptions) error {
 
 	sessionID := m.SessionName(dogName)
 
-	// Check if session already exists
-	running, err := m.tmux.HasSession(sessionID)
+	// Kill any existing zombie session (tmux alive but agent dead).
+	_, err := session.KillExistingSession(m.tmux, sessionID, true)
 	if err != nil {
-		return fmt.Errorf("checking session: %w", err)
-	}
-	if running {
-		// Session exists - check if agent is actually running (healthy vs zombie)
-		if m.tmux.IsAgentAlive(sessionID) {
-			return fmt.Errorf("%w: %s", ErrSessionRunning, sessionID)
-		}
-		// Zombie - tmux alive but agent dead. Kill and recreate.
-		if err := m.tmux.KillSessionWithProcesses(sessionID); err != nil {
-			return fmt.Errorf("killing zombie session: %w", err)
-		}
+		return fmt.Errorf("%w: %s", ErrSessionRunning, sessionID)
 	}
 
-	// Ensure runtime settings exist for dogs
-	runtimeConfig := config.ResolveRoleAgentConfig("dog", m.townRoot, kennelDir)
-	if err := runtime.EnsureSettingsForRole(kennelDir, "dog", runtimeConfig); err != nil {
-		return fmt.Errorf("ensuring runtime settings: %w", err)
-	}
-
-	// Get fallback info to determine beacon content based on agent capabilities.
-	// Non-hook agents need "Run gt prime" in beacon; work instructions come as delayed nudge.
-	fallbackInfo := runtime.GetStartupFallbackInfo(runtimeConfig)
-
-	// Build startup prompt - dogs check mail for work
-	address := fmt.Sprintf("deacon/dogs/%s", dogName)
+	// Build instructions for the dog
 	workInfo := ""
 	if opts.WorkDesc != "" {
 		workInfo = fmt.Sprintf(" Work assigned: %s.", opts.WorkDesc)
 	}
+	instructions := fmt.Sprintf("I am Dog %s.%s Check mail for work: `"+cli.Name()+" mail inbox`. Execute assigned formula/bead. When done, send DOG_DONE mail to deacon/ and return to idle.", dogName, workInfo)
 
-	// Configure beacon based on agent's hook/prompt capabilities.
-	beaconConfig := session.BeaconConfig{
-		Recipient:               address,
-		Sender:                  "deacon",
-		Topic:                   "assigned",
-		IncludePrimeInstruction: fallbackInfo.IncludePrimeInBeacon,
-		ExcludeWorkInstructions: fallbackInfo.SendStartupNudge,
-	}
-	beacon := session.FormatStartupBeacon(beaconConfig)
-	initialPrompt := fmt.Sprintf("I am Dog %s.%s Check mail for work: `"+cli.Name()+" mail inbox`. Execute assigned formula/bead. When done, send DOG_DONE mail to deacon/ and return to idle.", dogName, workInfo)
-
-	// Build startup command
-	startupCmd, err := config.BuildAgentStartupCommandWithAgentOverride("dog", "", m.townRoot, "", beacon+"\n"+initialPrompt, opts.AgentOverride)
-	if err != nil {
-		return fmt.Errorf("building startup command: %w", err)
-	}
-
-	// Create session with command
-	if err := m.tmux.NewSessionWithCommand(sessionID, kennelDir, startupCmd); err != nil {
-		return fmt.Errorf("creating tmux session: %w", err)
-	}
-
-	// Set environment variables
-	envVars := config.AgentEnv(config.AgentEnvConfig{
-		Role:     "dog",
-		TownRoot: m.townRoot,
-	})
-	for k, v := range envVars {
-		_ = m.tmux.SetEnvironment(sessionID, k, v)
-	}
-
-	// Apply dog theming
+	// Use unified session lifecycle.
 	theme := tmux.DogTheme()
-	_ = m.tmux.ConfigureGasTownSession(sessionID, theme, "", dogName, "dog")
-
-	// Wait for agent to start
-	if err := m.tmux.WaitForCommand(sessionID, constants.SupportedShells, constants.ClaudeStartTimeout); err != nil {
-		_ = m.tmux.KillSessionWithProcesses(sessionID)
-		return fmt.Errorf("waiting for dog to start: %w", err)
-	}
-
-	// Accept bypass permissions warning if it appears
-	_ = m.tmux.AcceptBypassPermissionsWarning(sessionID)
-
-	// Wait for runtime to be fully ready at the prompt (not just started)
-	runtime.SleepForReadyDelay(runtimeConfig)
-
-	// Handle fallback nudges for non-hook agents.
-	// See StartupFallbackInfo in runtime package for the fallback matrix.
-	if fallbackInfo.SendBeaconNudge && fallbackInfo.SendStartupNudge && fallbackInfo.StartupNudgeDelayMs == 0 {
-		// Hooks + no prompt: Single combined nudge (hook already ran gt prime synchronously)
-		combined := beacon + "\n\n" + runtime.StartupNudgeContent()
-		_ = m.tmux.NudgeSession(sessionID, combined)
-	} else {
-		if fallbackInfo.SendBeaconNudge {
-			// Agent doesn't support CLI prompt - send beacon via nudge
-			_ = m.tmux.NudgeSession(sessionID, beacon)
-		}
-
-		if fallbackInfo.StartupNudgeDelayMs > 0 {
-			// Wait for agent to run gt prime before sending work instructions
-			time.Sleep(time.Duration(fallbackInfo.StartupNudgeDelayMs) * time.Millisecond)
-		}
-
-		if fallbackInfo.SendStartupNudge {
-			// Send work instructions via nudge
-			_ = m.tmux.NudgeSession(sessionID, runtime.StartupNudgeContent())
-		}
-	}
-
-	// Legacy fallback for other startup paths (non-fatal)
-	_ = runtime.RunStartupFallback(m.tmux, sessionID, "dog", runtimeConfig)
-
-	// Verify session survived startup
-	running, err = m.tmux.HasSession(sessionID)
+	_, err = session.StartSession(m.tmux, session.SessionConfig{
+		SessionID: sessionID,
+		WorkDir:   kennelDir,
+		Role:      "dog",
+		TownRoot:  m.townRoot,
+		AgentName: dogName,
+		Beacon: session.BeaconConfig{
+			Recipient: fmt.Sprintf("deacon/dogs/%s", dogName),
+			Sender:    "deacon",
+			Topic:     "assigned",
+		},
+		Instructions:   instructions,
+		AgentOverride:  opts.AgentOverride,
+		Theme:          &theme,
+		WaitForAgent:   true,
+		WaitFatal:      true,
+		AcceptBypass:   true,
+		ReadyDelay:     true,
+		VerifySurvived: true,
+		TrackPID:       true,
+	})
 	if err != nil {
-		// Clean up the session we just created to prevent orphans
-		_ = m.tmux.KillSessionWithProcesses(sessionID)
-		return fmt.Errorf("verifying session: %w", err)
+		return err
 	}
-	if !running {
-		return fmt.Errorf("session %s died during startup", sessionID)
-	}
-
-	// Track PID for defense-in-depth orphan cleanup (non-fatal)
-	_ = session.TrackSessionPID(m.townRoot, sessionID, m.tmux)
 
 	// Update persistent state to working
 	if m.mgr != nil {
