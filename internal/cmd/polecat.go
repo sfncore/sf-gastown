@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/output"
 	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/polecat"
 	"github.com/steveyegge/gastown/internal/rig"
@@ -435,6 +436,11 @@ func runPolecatList(cmd *cobra.Command, args []string) error {
 
 	// Output
 	if polecatListJSON {
+		formatFlag, _ := cmd.Flags().GetString("format")
+		format := output.ResolveFormat(formatFlag)
+		if format == output.FormatTOON {
+			return output.PrintTOON(allPolecats)
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(allPolecats)
