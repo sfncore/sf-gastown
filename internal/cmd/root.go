@@ -277,8 +277,9 @@ func init() {
 	rootCmd.SetHelpCommandGroupID(GroupDiag)
 	rootCmd.SetCompletionCommandGroupID(GroupConfig)
 
-	// Global flags can be added here
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file")
+	// Global flags
+	rootCmd.PersistentFlags().String("format", "", "output format: json (default) or toon (token-optimized, set GT_OUTPUT_FORMAT=toon for default)")
+	// Backward compat: --json flag is still per-command, but --format=toon is global
 }
 
 // buildCommandPath walks the command hierarchy to build the full command path.

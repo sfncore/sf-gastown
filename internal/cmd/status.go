@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/output"
 	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/constants"
 	"github.com/steveyegge/gastown/internal/crew"
@@ -449,6 +450,9 @@ func runStatusOnce(_ *cobra.Command, _ []string) error {
 }
 
 func outputStatusJSON(status TownStatus) error {
+	if output.IsTOON() {
+		return output.PrintTOON(status)
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(status)
