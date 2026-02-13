@@ -166,11 +166,7 @@ func (g *Git) Clone(url, dest string) error {
 	}
 
 	// Configure hooks path for Gas Town clones
-	if err := configureHooksPath(dest); err != nil {
-		return err
-	}
-	// Configure sparse checkout to exclude .claude/ from source repo
-	return ConfigureSparseCheckout(dest)
+	return configureHooksPath(dest)
 }
 
 // CloneWithReference clones a repository using a local repo as an object reference.
@@ -210,11 +206,7 @@ func (g *Git) CloneWithReference(url, dest, reference string) error {
 	}
 
 	// Configure hooks path for Gas Town clones
-	if err := configureHooksPath(dest); err != nil {
-		return err
-	}
-	// Configure sparse checkout to exclude .claude/ from source repo
-	return ConfigureSparseCheckout(dest)
+	return configureHooksPath(dest)
 }
 
 // CloneBare clones a repository as a bare repo (no working directory).
@@ -344,6 +336,13 @@ func (g *Git) Checkout(ref string) error {
 // Fetch fetches from the remote.
 func (g *Git) Fetch(remote string) error {
 	_, err := g.run("fetch", remote)
+	return err
+}
+
+// FetchPrune fetches from the remote and prunes stale remote-tracking refs.
+// This removes remote-tracking branches for branches that no longer exist on the remote.
+func (g *Git) FetchPrune(remote string) error {
+	_, err := g.run("fetch", "--prune", remote)
 	return err
 }
 
@@ -704,6 +703,20 @@ func (g *Git) RemoteBranchExists(remote, branch string) (bool, error) {
 	return out != "", nil
 }
 
+// RemoteTrackingBranchExists checks if a remote-tracking branch ref exists locally
+// (e.g. refs/remotes/origin/main), without hitting the network.
+func (g *Git) RemoteTrackingBranchExists(remote, branch string) (bool, error) {
+	ref := fmt.Sprintf("refs/remotes/%s/%s", remote, branch)
+	_, err := g.run("show-ref", "--verify", "--quiet", ref)
+	if err != nil {
+		if strings.Contains(err.Error(), "exit status 1") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // DeleteBranch deletes a local branch.
 func (g *Git) DeleteBranch(name string, force bool) error {
 	flag := "-d"
@@ -759,188 +772,56 @@ func (g *Git) IsAncestor(ancestor, descendant string) (bool, error) {
 
 // WorktreeAdd creates a new worktree at the given path with a new branch.
 // The new branch is created from the current HEAD.
-// Sparse checkout is enabled to exclude .claude/ from source repos.
 func (g *Git) WorktreeAdd(path, branch string) error {
-	if _, err := g.run("worktree", "add", "-b", branch, path); err != nil {
-		return err
-	}
-	return ConfigureSparseCheckout(path)
+	_, err := g.run("worktree", "add", "-b", branch, path)
+	return err
 }
 
 // WorktreeAddFromRef creates a new worktree at the given path with a new branch
 // starting from the specified ref (e.g., "origin/main").
-// Sparse checkout is enabled to exclude .claude/ from source repos.
 func (g *Git) WorktreeAddFromRef(path, branch, startPoint string) error {
-	if _, err := g.run("worktree", "add", "-b", branch, path, startPoint); err != nil {
-		return err
-	}
-	return ConfigureSparseCheckout(path)
+	_, err := g.run("worktree", "add", "-b", branch, path, startPoint)
+	return err
 }
 
 // WorktreeAddDetached creates a new worktree at the given path with a detached HEAD.
-// Sparse checkout is enabled to exclude .claude/ from source repos.
 func (g *Git) WorktreeAddDetached(path, ref string) error {
-	if _, err := g.run("worktree", "add", "--detach", path, ref); err != nil {
-		return err
-	}
-	return ConfigureSparseCheckout(path)
+	_, err := g.run("worktree", "add", "--detach", path, ref)
+	return err
 }
 
 // WorktreeAddExisting creates a new worktree at the given path for an existing branch.
-// Sparse checkout is enabled to exclude .claude/ from source repos.
 func (g *Git) WorktreeAddExisting(path, branch string) error {
-	if _, err := g.run("worktree", "add", path, branch); err != nil {
-		return err
-	}
-	return ConfigureSparseCheckout(path)
+	_, err := g.run("worktree", "add", path, branch)
+	return err
 }
 
 // WorktreeAddExistingForce creates a new worktree even if the branch is already checked out elsewhere.
 // This is useful for cross-rig worktrees where multiple clones need to be on main.
-// Sparse checkout is enabled to exclude .claude/ from source repos.
 func (g *Git) WorktreeAddExistingForce(path, branch string) error {
-	if _, err := g.run("worktree", "add", "--force", path, branch); err != nil {
-		return err
-	}
-	return ConfigureSparseCheckout(path)
-}
-
-// WorktreeAddExistingForceNoSparse creates a new worktree without sparse checkout configuration.
-// Use this for temporary worktrees (like land operations) that don't need .claude/ exclusion.
-func (g *Git) WorktreeAddExistingForceNoSparse(path, branch string) error {
 	_, err := g.run("worktree", "add", "--force", path, branch)
 	return err
 }
 
-// ConfigureSparseCheckout sets up sparse checkout for a clone or worktree to exclude .claude/.
-// This ensures source repo settings don't override Gas Town agent settings.
-// Exported for use by doctor checks.
-func ConfigureSparseCheckout(repoPath string) error {
-	// Enable sparse checkout
-	cmd := exec.Command("git", "-C", repoPath, "config", "core.sparseCheckout", "true")
+// IsSparseCheckoutConfigured checks if sparse checkout is enabled for a given repo/worktree.
+// This is used by doctor to detect legacy sparse checkout configurations that should be removed.
+func IsSparseCheckoutConfigured(repoPath string) bool {
+	cmd := exec.Command("git", "-C", repoPath, "config", "core.sparseCheckout")
+	output, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(output)) == "true"
+}
+
+// RemoveSparseCheckout disables sparse checkout for a repo/worktree and restores all files.
+// This is used by doctor to clean up legacy sparse checkout configurations.
+func RemoveSparseCheckout(repoPath string) error {
+	// Use git sparse-checkout disable which properly restores hidden files
+	cmd := exec.Command("git", "-C", repoPath, "sparse-checkout", "disable")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("enabling sparse checkout: %s", strings.TrimSpace(stderr.String()))
-	}
-
-	// Get git dir for this repo/worktree
-	cmd = exec.Command("git", "-C", repoPath, "rev-parse", "--git-dir")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	stderr.Reset()
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("getting git dir: %s", strings.TrimSpace(stderr.String()))
-	}
-	gitDir := strings.TrimSpace(stdout.String())
-	if !filepath.IsAbs(gitDir) {
-		gitDir = filepath.Join(repoPath, gitDir)
-	}
-
-	// Write patterns directly to sparse-checkout file
-	// (git sparse-checkout set --stdin escapes the ! character incorrectly)
-	// Exclude Claude Code context files to prevent source repo instructions
-	// from interfering with Gas Town agent context:
-	// - .claude/      : settings, rules, agents, commands
-	// - CLAUDE.md     : primary context file
-	// - CLAUDE.local.md : personal context file
-	// Note: .mcp.json is NOT excluded so worktrees can inherit MCP server config
-	infoDir := filepath.Join(gitDir, "info")
-	if err := os.MkdirAll(infoDir, 0755); err != nil {
-		return fmt.Errorf("creating info dir: %w", err)
-	}
-	sparseFile := filepath.Join(infoDir, "sparse-checkout")
-	sparsePatterns := "/*\n!/.claude/\n!/CLAUDE.md\n!/CLAUDE.local.md\n"
-	if err := os.WriteFile(sparseFile, []byte(sparsePatterns), 0644); err != nil {
-		return fmt.Errorf("writing sparse-checkout: %w", err)
-	}
-
-	// Check if HEAD exists (repo has commits) before running read-tree
-	// Empty repos (no commits) don't need read-tree and it would fail
-	checkHead := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "HEAD")
-	if err := checkHead.Run(); err != nil {
-		// No commits yet, sparse checkout config is set up for future use
-		return nil
-	}
-
-	// Reapply to remove excluded files
-	cmd = exec.Command("git", "-C", repoPath, "read-tree", "-mu", "HEAD")
-	stderr.Reset()
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("applying sparse checkout: %s", strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("disabling sparse checkout: %s", strings.TrimSpace(stderr.String()))
 	}
 	return nil
-}
-
-// ExcludedContextFiles lists all Claude context files that should be excluded by sparse checkout.
-// Note: .mcp.json is NOT excluded so worktrees can inherit MCP server config (e.g., Puppeteer).
-var ExcludedContextFiles = []string{
-	".claude",
-	"CLAUDE.md",
-	"CLAUDE.local.md",
-}
-
-// CheckExcludedFilesExist checks if any Claude context files still exist in the repo
-// after sparse checkout was configured. These files should have been removed by
-// git read-tree, but may remain if they were untracked or modified.
-// Returns a list of files that still exist and should be manually removed.
-func CheckExcludedFilesExist(repoPath string) []string {
-	var remaining []string
-	for _, file := range ExcludedContextFiles {
-		path := filepath.Join(repoPath, file)
-		if _, err := os.Stat(path); err == nil {
-			remaining = append(remaining, file)
-		}
-	}
-	return remaining
-}
-
-// IsSparseCheckoutConfigured checks if sparse checkout is enabled and configured
-// to exclude Claude Code context files for a given repo/worktree.
-// Returns true only if both core.sparseCheckout is true AND the sparse-checkout
-// file contains all required exclusion patterns.
-func IsSparseCheckoutConfigured(repoPath string) bool {
-	// Check if core.sparseCheckout is true
-	cmd := exec.Command("git", "-C", repoPath, "config", "core.sparseCheckout")
-	output, err := cmd.Output()
-	if err != nil || strings.TrimSpace(string(output)) != "true" {
-		return false
-	}
-
-	// Get git dir for this repo/worktree
-	cmd = exec.Command("git", "-C", repoPath, "rev-parse", "--git-dir")
-	output, err = cmd.Output()
-	if err != nil {
-		return false
-	}
-	gitDir := strings.TrimSpace(string(output))
-	if !filepath.IsAbs(gitDir) {
-		gitDir = filepath.Join(repoPath, gitDir)
-	}
-
-	// Check if sparse-checkout file exists and excludes Claude context files
-	sparseFile := filepath.Join(gitDir, "info", "sparse-checkout")
-	content, err := os.ReadFile(sparseFile)
-	if err != nil {
-		return false
-	}
-
-	// Check for all required exclusion patterns
-	contentStr := string(content)
-	requiredPatterns := []string{
-		"!/.claude/",  // or legacy "!.claude/"
-		"!/CLAUDE.md", // or legacy without leading slash
-	}
-	for _, pattern := range requiredPatterns {
-		// Accept both with and without leading slash for backwards compatibility
-		legacyPattern := strings.TrimPrefix(pattern, "/")
-		if !strings.Contains(contentStr, pattern) && !strings.Contains(contentStr, legacyPattern) {
-			return false
-		}
-	}
-	return true
 }
 
 // WorktreeRemove removes a worktree.
@@ -1303,4 +1184,89 @@ func (g *Git) BranchPushedToRemote(localBranch, remote string) (bool, int, error
 	}
 
 	return n == 0, n, nil
+}
+
+// PrunedBranch represents a local branch that was pruned (or would be pruned in dry-run).
+type PrunedBranch struct {
+	Name   string // Branch name (e.g., "polecat/rictus-mkb0vq9f")
+	Reason string // Why it was pruned: "merged", "no-remote", "no-remote-merged"
+}
+
+// PruneStaleBranches finds and deletes local branches matching a pattern that are
+// stale — either fully merged to the default branch or whose remote tracking branch
+// no longer exists (indicating the remote branch was deleted after merge).
+//
+// This addresses cross-clone branch accumulation: when polecats push branches to
+// origin, other clones create local tracking branches via git fetch. After the
+// remote branch is deleted (post-merge), git fetch --prune removes the remote
+// tracking ref but the local branch persists indefinitely.
+//
+// Safety: never deletes the current branch or the default branch (main/master).
+// Uses git branch -d (not -D), so only fully-merged branches are deleted.
+func (g *Git) PruneStaleBranches(pattern string, dryRun bool) ([]PrunedBranch, error) {
+	if pattern == "" {
+		pattern = "polecat/*"
+	}
+
+	// Get current branch to avoid deleting it
+	currentBranch, _ := g.CurrentBranch()
+	defaultBranch := g.RemoteDefaultBranch()
+
+	// List all local branches matching the pattern
+	branches, err := g.ListBranches(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("listing branches: %w", err)
+	}
+
+	var pruned []PrunedBranch
+	for _, branch := range branches {
+		branch = strings.TrimSpace(branch)
+		if branch == "" || branch == currentBranch || branch == defaultBranch {
+			continue
+		}
+
+		// Check if the remote tracking branch still exists
+		hasRemote, err := g.RemoteTrackingBranchExists("origin", branch)
+		if err != nil {
+			continue // Skip on error, don't fail the whole operation
+		}
+
+		// Check if the branch is merged to the default branch
+		merged, err := g.IsAncestor(branch, "origin/"+defaultBranch)
+		if err != nil {
+			// If we can't determine merge status, only prune if remote is gone
+			if hasRemote {
+				continue
+			}
+			// Remote gone and can't check merge status — skip to be safe
+			continue
+		}
+
+		var reason string
+		if merged && !hasRemote {
+			reason = "no-remote-merged"
+		} else if merged {
+			reason = "merged"
+		} else if !hasRemote {
+			reason = "no-remote"
+		} else {
+			continue // Branch has remote and is not merged — keep it
+		}
+
+		if !dryRun {
+			// Use -d (not -D) for safety — only deletes fully merged branches.
+			// For "no-remote" branches that aren't merged, -d will fail safely.
+			if err := g.DeleteBranch(branch, false); err != nil {
+				// If -d fails (not merged), skip this branch
+				continue
+			}
+		}
+
+		pruned = append(pruned, PrunedBranch{
+			Name:   branch,
+			Reason: reason,
+		})
+	}
+
+	return pruned, nil
 }

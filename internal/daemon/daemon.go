@@ -24,6 +24,8 @@ import (
 	"github.com/steveyegge/gastown/internal/doltserver"
 	"github.com/steveyegge/gastown/internal/events"
 	"github.com/steveyegge/gastown/internal/feed"
+	gitpkg "github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/mayor"
 	"github.com/steveyegge/gastown/internal/polecat"
 	"github.com/steveyegge/gastown/internal/refinery"
 	"github.com/steveyegge/gastown/internal/rig"
@@ -246,6 +248,19 @@ func (d *Daemon) Run() error {
 		d.logger.Printf("Dolt health check ticker started (interval %v)", interval)
 	}
 
+	// Start dedicated Dolt remotes push ticker if configured.
+	// This runs at a lower frequency (default 15 min) than the heartbeat (3 min)
+	// to periodically push databases to their git remotes.
+	var doltRemotesTicker *time.Ticker
+	var doltRemotesChan <-chan time.Time
+	if IsPatrolEnabled(d.patrolConfig, "dolt_remotes") {
+		interval := doltRemotesInterval(d.patrolConfig)
+		doltRemotesTicker = time.NewTicker(interval)
+		doltRemotesChan = doltRemotesTicker.C
+		defer doltRemotesTicker.Stop()
+		d.logger.Printf("Dolt remotes push ticker started (interval %v)", interval)
+	}
+
 	// Note: PATCH-010 uses per-session hooks in deacon/manager.go (SetAutoRespawnHook).
 	// Global pane-died hooks don't fire reliably in tmux 3.2a, so we rely on the
 	// per-session approach which has been tested to work for continuous recovery.
@@ -274,6 +289,13 @@ func (d *Daemon) Run() error {
 			// of the 3-minute general heartbeat.
 			if !d.isShutdownInProgress() {
 				d.ensureDoltServerRunning()
+			}
+
+		case <-doltRemotesChan:
+			// Periodic Dolt remote push — pushes databases to their configured
+			// git remotes on a 15-minute cadence (independent of heartbeat).
+			if !d.isShutdownInProgress() {
+				d.pushDoltRemotes()
 			}
 
 		case <-timer.C:
@@ -359,27 +381,30 @@ func (d *Daemon) heartbeat(state *State) {
 		d.killRefinerySessions()
 	}
 
-	// 6. Trigger pending polecat spawns (bootstrap mode - ZFC violation acceptable)
+	// 6. Ensure Mayor is running (restart if dead)
+	d.ensureMayorRunning()
+
+	// 7. Trigger pending polecat spawns (bootstrap mode - ZFC violation acceptable)
 	// This ensures polecats get nudged even when Deacon isn't in a patrol cycle.
 	// Uses regex-based WaitForRuntimeReady, which is acceptable for daemon bootstrap.
 	d.triggerPendingSpawns()
 
-	// 7. Process lifecycle requests
+	// 8. Process lifecycle requests
 	d.processLifecycleRequests()
 
-	// 8. (Removed) Stale agent check - violated "discover, don't track"
+	// 9. (Removed) Stale agent check - violated "discover, don't track"
 
-	// 9. Check for GUPP violations (agents with work-on-hook not progressing)
+	// 10. Check for GUPP violations (agents with work-on-hook not progressing)
 	d.checkGUPPViolations()
 
-	// 10. Check for orphaned work (assigned to dead agents)
+	// 11. Check for orphaned work (assigned to dead agents)
 	d.checkOrphanedWork()
 
-	// 11. Check polecat session health (proactive crash detection)
+	// 12. Check polecat session health (proactive crash detection)
 	// This validates tmux sessions are still alive for polecats with work-on-hook
 	d.checkPolecatSessionHealth()
 
-	// 12. Clean up orphaned claude subagent processes (memory leak prevention)
+	// 13. Clean up orphaned claude subagent processes (memory leak prevention)
 	// These are Task tool subagents that didn't clean up after completion.
 	// This is a safety net - Deacon patrol also does this more frequently.
 	d.cleanupOrphanedProcesses()
@@ -388,6 +413,12 @@ func (d *Daemon) heartbeat(state *State) {
 	// Mayor and Deacon should use town beads (~/gt/.beads) via parent directory walk.
 	// If they have local .beads with databases, bd uses the wrong database.
 	d.cleanupTownServiceBeads()
+
+	// 14. Prune stale local polecat tracking branches across all rig clones.
+	// When polecats push branches to origin, other clones create local tracking
+	// branches via git fetch. After merge, remote branches are deleted but local
+	// branches persist indefinitely. This cleans them up periodically.
+	d.pruneStaleBranches()
 
 	// Update state
 	state.LastHeartbeat = time.Now()
@@ -747,6 +778,23 @@ func (d *Daemon) ensureRefineryRunning(rigName string) {
 	}
 
 	d.logger.Printf("Refinery session for %s started successfully", rigName)
+}
+
+// ensureMayorRunning ensures the Mayor is running.
+// Uses mayor.Manager for consistent startup behavior (zombie detection, GUPP, etc.).
+func (d *Daemon) ensureMayorRunning() {
+	mgr := mayor.NewManager(d.config.TownRoot)
+
+	if err := mgr.Start(""); err != nil {
+		if err == mayor.ErrAlreadyRunning {
+			// Mayor is running - nothing to do
+			return
+		}
+		d.logger.Printf("Error starting Mayor: %v", err)
+		return
+	}
+
+	d.logger.Println("Mayor started successfully")
 }
 
 // killDeaconSessions kills leftover deacon and boot tmux sessions.
@@ -1654,4 +1702,41 @@ func (d *Daemon) cleanupOrphanedProcesses() {
 			}
 		}
 	}
+}
+
+// pruneStaleBranches removes stale local polecat tracking branches from all rig clones.
+// This runs in every heartbeat but is very fast when there are no stale branches.
+func (d *Daemon) pruneStaleBranches() {
+	// pruneInDir prunes stale polecat branches in a single git directory.
+	pruneInDir := func(dir, label string) {
+		g := gitpkg.NewGit(dir)
+		if !g.IsRepo() {
+			return
+		}
+
+		// Fetch --prune first to clean up stale remote tracking refs
+		_ = g.FetchPrune("origin")
+
+		pruned, err := g.PruneStaleBranches("polecat/*", false)
+		if err != nil {
+			d.logger.Printf("Warning: branch prune failed for %s: %v", label, err)
+			return
+		}
+
+		if len(pruned) > 0 {
+			d.logger.Printf("Branch prune: removed %d stale polecat branch(es) in %s", len(pruned), label)
+			for _, b := range pruned {
+				d.logger.Printf("  %s (%s)", b.Name, b.Reason)
+			}
+		}
+	}
+
+	// Prune in each rig's git directory
+	for _, rigName := range d.getKnownRigs() {
+		rigPath := filepath.Join(d.config.TownRoot, rigName)
+		pruneInDir(rigPath, rigName)
+	}
+
+	// Also prune in the town root itself (mayor clone)
+	pruneInDir(d.config.TownRoot, "town-root")
 }

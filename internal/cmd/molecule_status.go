@@ -502,6 +502,8 @@ func buildAgentIdentity(ctx RoleContext) string {
 		return "mayor/"
 	case RoleDeacon:
 		return "deacon/"
+	case RoleBoot:
+		return "deacon/boot"
 	case RoleWitness:
 		return ctx.Rig + "/witness"
 	case RoleRefinery:
@@ -976,7 +978,8 @@ func outputMoleculeCurrent(info MoleculeCurrentInfo) error {
 // Accepts both "mayor" and "mayor/" formats for compatibility.
 func isTownLevelRole(agentID string) bool {
 	return agentID == "mayor" || agentID == "mayor/" ||
-		agentID == "deacon" || agentID == "deacon/"
+		agentID == "deacon" || agentID == "deacon/" ||
+		agentID == "boot" || agentID == "deacon/boot"
 }
 
 // extractMailSender extracts the sender from mail bead labels.
@@ -1003,7 +1006,14 @@ func scanAllRigsForHookedBeads(townRoot, target string) []*beads.Issue {
 
 	// Scan each rig's beads directory
 	for _, route := range routes {
-		rigBeadsDir := filepath.Join(townRoot, route.Path)
+		// Handle both absolute and relative paths in routes.jsonl
+		// Go's filepath.Join doesn't replace with absolute paths like Python
+		var rigBeadsDir string
+		if filepath.IsAbs(route.Path) {
+			rigBeadsDir = route.Path
+		} else {
+			rigBeadsDir = filepath.Join(townRoot, route.Path)
+		}
 		if _, err := os.Stat(rigBeadsDir); os.IsNotExist(err) {
 			continue
 		}
