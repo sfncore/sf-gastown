@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"github.com/steveyegge/gastown/internal/beads"
 	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/git"
+	"github.com/steveyegge/gastown/internal/output"
 	"github.com/steveyegge/gastown/internal/style"
 	"github.com/steveyegge/gastown/internal/workspace"
 )
@@ -700,7 +700,7 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 	readyToLand := isReadyToLand(aheadCount, childrenTotal, childrenClosed, len(pendingMRs))
 
 	// Build output structure
-	output := IntegrationStatusOutput{
+	statusOutput := IntegrationStatusOutput{
 		Epic:            epicID,
 		Branch:          branchName,
 		Created:         createdDate,
@@ -716,7 +716,7 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 	for _, mr := range mergedMRs {
 		// Extract the title without "Merge: " prefix for cleaner display
 		title := strings.TrimPrefix(mr.Title, "Merge: ")
-		output.MergedMRs = append(output.MergedMRs, IntegrationStatusMRSummary{
+		statusOutput.MergedMRs = append(statusOutput.MergedMRs, IntegrationStatusMRSummary{
 			ID:    mr.ID,
 			Title: title,
 		})
@@ -724,7 +724,7 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 
 	for _, mr := range pendingMRs {
 		title := strings.TrimPrefix(mr.Title, "Merge: ")
-		output.PendingMRs = append(output.PendingMRs, IntegrationStatusMRSummary{
+		statusOutput.PendingMRs = append(statusOutput.PendingMRs, IntegrationStatusMRSummary{
 			ID:     mr.ID,
 			Title:  title,
 			Status: mr.Status,
@@ -733,13 +733,11 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 
 	// JSON output
 	if mqIntegrationStatusJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(output)
+		return output.Print(statusOutput)
 	}
 
 	// Human-readable output
-	return printIntegrationStatus(&output)
+	return printIntegrationStatus(&statusOutput)
 }
 
 // isReadyToLand determines if an integration branch is ready to land.
