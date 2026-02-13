@@ -703,16 +703,12 @@ func runMqIntegrationStatus(cmd *cobra.Command, args []string) error {
 
 	// Build output structure
 	statusOutput := IntegrationStatusOutput{
-		Epic:            epicID,
-		Branch:          branchName,
-		Created:         createdDate,
-		AheadOfMain:     aheadCount,
-		MergedMRs:       make([]IntegrationStatusMRSummary, 0, len(mergedMRs)),
-		PendingMRs:      make([]IntegrationStatusMRSummary, 0, len(pendingMRs)),
-		ReadyToLand:     readyToLand,
-		AutoLandEnabled: autoLandEnabled,
-		ChildrenTotal:   childrenTotal,
-		ChildrenClosed:  childrenClosed,
+		Epic:        epicID,
+		Branch:      branchName,
+		Created:     createdDate,
+		AheadOfMain: aheadCount,
+		MergedMRs:   make([]IntegrationStatusMRSummary, 0, len(mergedMRs)),
+		PendingMRs:  make([]IntegrationStatusMRSummary, 0, len(pendingMRs)),
 	}
 
 	for _, mr := range mergedMRs {

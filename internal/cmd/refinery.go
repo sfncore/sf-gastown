@@ -759,9 +759,7 @@ func runRefineryReadyAll(eng *refinery.Engineer, rigName string) error {
 	}
 
 	if refineryReadyJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(mrs)
+		return output.Print(mrs)
 	}
 
 	// Human-readable output with assignee and updated_at
