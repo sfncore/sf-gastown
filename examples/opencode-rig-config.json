@@ -1,0 +1,36 @@
+{
+  "type": "rig-settings",
+  "version": 1,
+  "agent": "opencode",
+  "agents": {
+    "custom-polecat": {
+      "provider": "opencode",
+      "command": "opencode",
+      "args": ["--temperature", "0.7"],
+      "env": {
+        "OPENCODE_DEBUG": "1"
+      }
+    }
+  },
+  "role_agents": {
+    "polecat": "custom-polecat",
+    "witness": "opencode"
+  },
+  "merge_queue": {
+    "enabled": true,
+    "target_branch": "main",
+    "run_tests": true,
+    "test_command": "go test ./...",
+    "max_concurrent": 1
+  },
+  "theme": {
+    "name": "forest"
+  },
+  "namepool": {
+    "style": "minerals",
+    "max_before_numbering": 50
+  },
+  "crew": {
+    "startup": "pick one"
+  }
+}

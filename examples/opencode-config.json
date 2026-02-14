@@ -1,0 +1,50 @@
+{
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "opencode",
+  "agents": {
+    "opencode": {
+      "provider": "opencode",
+      "command": "opencode",
+      "args": [],
+      "prompt_mode": "none",
+      "instructions": {
+        "file": "AGENTS.md"
+      }
+    },
+    "claude": {
+      "provider": "claude",
+      "command": "claude",
+      "args": ["--dangerously-skip-permissions"],
+      "prompt_mode": "arg",
+      "instructions": {
+        "file": "CLAUDE.md"
+      }
+    },
+    "opencode-mini": {
+      "provider": "opencode",
+      "command": "opencode",
+      "args": ["--model", "gpt-4o-mini"],
+      "prompt_mode": "none",
+      "instructions": {
+        "file": "AGENTS.md"
+      }
+    }
+  },
+  "role_agents": {
+    "mayor": "opencode",
+    "witness": "opencode-mini",
+    "refinery": "opencode",
+    "polecat": "opencode",
+    "crew": "claude"
+  },
+  "agent_email_domain": "gastown.local",
+  "web_timeouts": {
+    "cmd_timeout": "15s",
+    "gh_cmd_timeout": "10s"
+  },
+  "worker_status": {
+    "stale_threshold": "5m",
+    "stuck_threshold": "30m"
+  }
+}
