@@ -236,3 +236,267 @@ func TestRunStatusWatch_RejectsJSONCombo(t *testing.T) {
 		t.Errorf("error %q should mention 'cannot be used together'", err.Error())
 	}
 }
+
+// TestParseRuntimeInfo tests the parseRuntimeInfo function with various cmdline patterns.
+func TestParseRuntimeInfo(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmdline  string
+		want     RuntimeInfo
+	}{
+		{
+			name:    "empty cmdline",
+			cmdline: "",
+			want:    RuntimeInfo{},
+		},
+		{
+			name:    "claude --model opus",
+			cmdline: "claude --model opus",
+			want:    RuntimeInfo{Provider: "claude", Model: "opus"},
+		},
+		{
+			name:    "claude with short model flag",
+			cmdline: "claude -m sonnet",
+			want:    RuntimeInfo{Provider: "claude", Model: "sonnet"},
+		},
+		{
+			name:    "pi direct command",
+			cmdline: "pi --provider anthropic --model claude-sonnet",
+			want:    RuntimeInfo{Provider: "pi", Model: "claude-sonnet"},
+		},
+		{
+			name:    "pi with short flags",
+			cmdline: "pi -p provider -m model-name",
+			want:    RuntimeInfo{Provider: "pi", Model: "model-name"},
+		},
+		{
+			name:    "opencode direct command",
+			cmdline: "opencode --model gpt-4",
+			want:    RuntimeInfo{Provider: "opencode", Model: "gpt-4"},
+		},
+		{
+			name:    "node running pi wrapper",
+			cmdline: "node /path/to/pi -e hooks.js",
+			want:    RuntimeInfo{Provider: "pi", Model: ""},
+		},
+		{
+			name:    "bun running opencode",
+			cmdline: "bun run opencode",
+			want:    RuntimeInfo{Provider: "opencode", Model: ""},
+		},
+		{
+			name:    "node running pi with model",
+			cmdline: "node /usr/local/bin/pi --model claude-opus",
+			want:    RuntimeInfo{Provider: "pi", Model: "claude-opus"},
+		},
+		{
+			name:    "gemini command",
+			cmdline: "gemini --model flash",
+			want:    RuntimeInfo{Provider: "gemini", Model: "flash"},
+		},
+		{
+			name:    "codex command",
+			cmdline: "codex --model o3-mini",
+			want:    RuntimeInfo{Provider: "codex", Model: "o3-mini"},
+		},
+		{
+			name:    "cursor-agent command",
+			cmdline: "cursor-agent",
+			want:    RuntimeInfo{Provider: "cursor", Model: ""},
+		},
+		{
+			name:    "auggie command",
+			cmdline: "auggie",
+			want:    RuntimeInfo{Provider: "auggie", Model: ""},
+		},
+		{
+			name:    "amp command",
+			cmdline: "amp",
+			want:    RuntimeInfo{Provider: "amp", Model: ""},
+		},
+		{
+			name:    "claude with full path",
+			cmdline: "/usr/local/bin/claude --model opus",
+			want:    RuntimeInfo{Provider: "claude", Model: "opus"},
+		},
+		{
+			name:    "unknown command",
+			cmdline: "unknown-agent --model test",
+			want:    RuntimeInfo{Provider: "", Model: ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseRuntimeInfo(tt.cmdline)
+			if got.Provider != tt.want.Provider {
+				t.Errorf("parseRuntimeInfo(%q).Provider = %q, want %q", tt.cmdline, got.Provider, tt.want.Provider)
+			}
+			if got.Model != tt.want.Model {
+				t.Errorf("parseRuntimeInfo(%q).Model = %q, want %q", tt.cmdline, got.Model, tt.want.Model)
+			}
+		})
+	}
+}
+
+// TestIsAgentCmdline tests the isAgentCmdline function for wrapper detection.
+func TestIsAgentCmdline(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmdline string
+		want    bool
+	}{
+		{
+			name:    "empty cmdline",
+			cmdline: "",
+			want:    false,
+		},
+		{
+			name:    "node running pi",
+			cmdline: "node /path/to/pi -e hooks.js",
+			want:    true,
+		},
+		{
+			name:    "bun running pi",
+			cmdline: "bun run pi",
+			want:    true,
+		},
+		{
+			name:    "node running opencode",
+			cmdline: "node /path/to/opencode/cli.js",
+			want:    true,
+		},
+		{
+			name:    "bun running opencode",
+			cmdline: "bun run opencode",
+			want:    true,
+		},
+		{
+			name:    "direct pi command",
+			cmdline: "pi --model test",
+			want:    false,
+		},
+		{
+			name:    "direct opencode command",
+			cmdline: "opencode",
+			want:    false,
+		},
+		{
+			name:    "node running other script",
+			cmdline: "node /path/to/script.js",
+			want:    false,
+		},
+		{
+			name:    "bun running other script",
+			cmdline: "bun run some-script",
+			want:    false,
+		},
+		{
+			name:    "claude command",
+			cmdline: "claude --model opus",
+			want:    false,
+		},
+		{
+			name:    "node with pi in path",
+			cmdline: "node /home/user/.local/bin/pi",
+			want:    true,
+		},
+		{
+			name:    "node with opencode in path",
+			cmdline: "node /home/user/.local/bin/opencode",
+			want:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isAgentCmdline(tt.cmdline)
+			if got != tt.want {
+				t.Errorf("isAgentCmdline(%q) = %v, want %v", tt.cmdline, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestReadPiDefaults tests the readPiDefaults function.
+func TestReadPiDefaults(t *testing.T) {
+	t.Run("returns empty map when settings file does not exist", func(t *testing.T) {
+		// Use a temp home directory to ensure no settings file exists
+		oldHome := os.Getenv("HOME")
+		tmpHome := t.TempDir()
+		os.Setenv("HOME", tmpHome)
+		defer os.Setenv("HOME", oldHome)
+
+		settings, err := readPiDefaults()
+		if err != nil {
+			t.Fatalf("readPiDefaults() error = %v, want nil", err)
+		}
+		if settings == nil {
+			t.Fatal("readPiDefaults() returned nil, want empty map")
+		}
+		if len(settings) != 0 {
+			t.Errorf("readPiDefaults() returned %d entries, want 0", len(settings))
+		}
+	})
+
+	t.Run("reads and parses settings file", func(t *testing.T) {
+		oldHome := os.Getenv("HOME")
+		tmpHome := t.TempDir()
+		os.Setenv("HOME", tmpHome)
+		defer os.Setenv("HOME", oldHome)
+
+		// Create the settings directory and file
+		settingsDir := filepath.Join(tmpHome, ".pi", "agent")
+		if err := os.MkdirAll(settingsDir, 0755); err != nil {
+			t.Fatalf("failed to create settings dir: %v", err)
+		}
+
+		settingsContent := `{
+			"defaultProvider": "anthropic",
+			"defaultModel": "claude-sonnet-4",
+			"autoApprove": true
+		}`
+		settingsPath := filepath.Join(settingsDir, "settings.json")
+		if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+			t.Fatalf("failed to write settings file: %v", err)
+		}
+
+		settings, err := readPiDefaults()
+		if err != nil {
+			t.Fatalf("readPiDefaults() error = %v, want nil", err)
+		}
+
+		if settings["defaultProvider"] != "anthropic" {
+			t.Errorf("defaultProvider = %v, want anthropic", settings["defaultProvider"])
+		}
+		if settings["defaultModel"] != "claude-sonnet-4" {
+			t.Errorf("defaultModel = %v, want claude-sonnet-4", settings["defaultModel"])
+		}
+		if autoApprove, ok := settings["autoApprove"].(bool); !ok || !autoApprove {
+			t.Errorf("autoApprove = %v, want true", settings["autoApprove"])
+		}
+	})
+
+	t.Run("returns error for invalid JSON", func(t *testing.T) {
+		oldHome := os.Getenv("HOME")
+		tmpHome := t.TempDir()
+		os.Setenv("HOME", tmpHome)
+		defer os.Setenv("HOME", oldHome)
+
+		// Create the settings directory and invalid file
+		settingsDir := filepath.Join(tmpHome, ".pi", "agent")
+		if err := os.MkdirAll(settingsDir, 0755); err != nil {
+			t.Fatalf("failed to create settings dir: %v", err)
+		}
+
+		settingsPath := filepath.Join(settingsDir, "settings.json")
+		if err := os.WriteFile(settingsPath, []byte("invalid json"), 0644); err != nil {
+			t.Fatalf("failed to write settings file: %v", err)
+		}
+
+		_, err := readPiDefaults()
+		if err == nil {
+			t.Error("readPiDefaults() error = nil, want error for invalid JSON")
+		}
+	})
+}

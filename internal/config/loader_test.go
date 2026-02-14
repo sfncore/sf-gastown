@@ -211,7 +211,6 @@ func TestRigSettingsWithCustomMergeQueue(t *testing.T) {
 		MergeQueue: &MergeQueueConfig{
 			Enabled:              true,
 			TargetBranch:         "develop",
-			IntegrationBranches:  false,
 			OnConflict:           OnConflictAutoRebase,
 			RunTests:             true,
 			TestCommand:          "make test",
@@ -366,9 +365,6 @@ func TestDefaultMergeQueueConfig(t *testing.T) {
 	}
 	if cfg.TargetBranch != "main" {
 		t.Errorf("TargetBranch = %q, want 'main'", cfg.TargetBranch)
-	}
-	if !cfg.IntegrationBranches {
-		t.Error("IntegrationBranches should be true by default")
 	}
 	if cfg.OnConflict != OnConflictAssignBack {
 		t.Errorf("OnConflict = %q, want %q", cfg.OnConflict, OnConflictAssignBack)
@@ -3907,4 +3903,130 @@ func TestBuildStartupCommandWithAgentOverride_UsesGTRootFromEnvVars(t *testing.T
 	if !strings.Contains(cmd, "--model sonnet") {
 		t.Errorf("expected --model sonnet from role_agents[deacon], got: %q", cmd)
 	}
+}
+
+// TestFillRuntimeDefaults_Pi tests fillRuntimeDefaults for the pi agent.
+func TestFillRuntimeDefaults_Pi(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pi command gets auto-filled hooks", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command: "pi",
+			Args:    []string{},
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Hooks == nil {
+			t.Fatal("Hooks should be auto-filled for pi command")
+		}
+		if result.Hooks.Provider != "pi" {
+			t.Errorf("Hooks.Provider = %q, want %q", result.Hooks.Provider, "pi")
+		}
+		if result.Hooks.Dir != ".pi/extensions" {
+			t.Errorf("Hooks.Dir = %q, want %q", result.Hooks.Dir, ".pi/extensions")
+		}
+		if result.Hooks.SettingsFile != "gastown-hooks.js" {
+			t.Errorf("Hooks.SettingsFile = %q, want %q", result.Hooks.SettingsFile, "gastown-hooks.js")
+		}
+	})
+
+	t.Run("pi command gets auto-filled tmux config", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command: "pi",
+			Args:    []string{},
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Tmux == nil {
+			t.Fatal("Tmux should be auto-filled for pi command")
+		}
+		if len(result.Tmux.ProcessNames) != 3 {
+			t.Errorf("Tmux.ProcessNames length = %d, want 3", len(result.Tmux.ProcessNames))
+		}
+		expectedNames := []string{"pi", "node", "bun"}
+		for i, want := range expectedNames {
+			if i < len(result.Tmux.ProcessNames) && result.Tmux.ProcessNames[i] != want {
+				t.Errorf("Tmux.ProcessNames[%d] = %q, want %q", i, result.Tmux.ProcessNames[i], want)
+			}
+		}
+		if result.Tmux.ReadyDelayMs != 3000 {
+			t.Errorf("Tmux.ReadyDelayMs = %d, want 3000", result.Tmux.ReadyDelayMs)
+		}
+	})
+
+	t.Run("pi command gets default prompt mode", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command: "pi",
+			Args:    []string{},
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.PromptMode != "arg" {
+			t.Errorf("PromptMode = %q, want %q", result.PromptMode, "arg")
+		}
+	})
+
+	t.Run("pi preserves existing hooks config", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command: "pi",
+			Args:    []string{},
+			Hooks: &RuntimeHooksConfig{
+				Provider:     "custom",
+				Dir:          ".custom/hooks",
+				SettingsFile: "custom.js",
+			},
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.Hooks.Provider != "custom" {
+			t.Errorf("Hooks.Provider = %q, want %q (existing should be preserved)", result.Hooks.Provider, "custom")
+		}
+		if result.Hooks.Dir != ".custom/hooks" {
+			t.Errorf("Hooks.Dir = %q, want %q", result.Hooks.Dir, ".custom/hooks")
+		}
+	})
+
+	t.Run("pi preserves existing tmux config", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command: "pi",
+			Args:    []string{},
+			Tmux: &RuntimeTmuxConfig{
+				ProcessNames: []string{"custom-pi"},
+				ReadyDelayMs: 5000,
+			},
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if len(result.Tmux.ProcessNames) != 1 || result.Tmux.ProcessNames[0] != "custom-pi" {
+			t.Errorf("Tmux.ProcessNames = %v, want [custom-pi]", result.Tmux.ProcessNames)
+		}
+		if result.Tmux.ReadyDelayMs != 5000 {
+			t.Errorf("Tmux.ReadyDelayMs = %d, want 5000", result.Tmux.ReadyDelayMs)
+		}
+	})
+
+	t.Run("pi preserves existing prompt mode", func(t *testing.T) {
+		t.Parallel()
+		input := &RuntimeConfig{
+			Command:    "pi",
+			Args:       []string{},
+			PromptMode: "none",
+		}
+
+		result := fillRuntimeDefaults(input)
+
+		if result.PromptMode != "none" {
+			t.Errorf("PromptMode = %q, want %q (existing should be preserved)", result.PromptMode, "none")
+		}
+	})
 }

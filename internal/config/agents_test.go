@@ -778,3 +778,108 @@ func TestOpenCodeRuntimeConfigFromPreset(t *testing.T) {
 		t.Error("Mutation of RuntimeConfig.Env affected original preset")
 	}
 }
+
+// TestAgentPiPreset tests the AgentPi preset configuration.
+func TestAgentPiPreset(t *testing.T) {
+	t.Parallel()
+
+	// Verify AgentPi preset is correctly configured
+	info := GetAgentPreset(AgentPi)
+	if info == nil {
+		t.Fatal("pi preset not found")
+	}
+
+	// Check command
+	if info.Command != "pi" {
+		t.Errorf("pi command = %q, want pi", info.Command)
+	}
+
+	// Check Args (should be empty - extension loaded via -e flag)
+	if len(info.Args) != 0 {
+		t.Errorf("pi args = %v, want empty (extension loaded via -e flag)", info.Args)
+	}
+
+	// Check ProcessNames for detection (pi, node, bun)
+	if len(info.ProcessNames) != 3 {
+		t.Errorf("pi ProcessNames length = %d, want 3", len(info.ProcessNames))
+	}
+	expectedNames := []string{"pi", "node", "bun"}
+	for i, want := range expectedNames {
+		if i < len(info.ProcessNames) && info.ProcessNames[i] != want {
+			t.Errorf("pi ProcessNames[%d] = %q, want %q", i, info.ProcessNames[i], want)
+		}
+	}
+
+	// Check hooks support
+	if !info.SupportsHooks {
+		t.Error("pi should support hooks")
+	}
+
+	// Check fork session (not supported)
+	if info.SupportsForkSession {
+		t.Error("pi should not support fork session")
+	}
+
+	// Check SessionIDEnv
+	if info.SessionIDEnv != "PI_SESSION_ID" {
+		t.Errorf("pi SessionIDEnv = %q, want PI_SESSION_ID", info.SessionIDEnv)
+	}
+
+	// Check NonInteractive config
+	if info.NonInteractive == nil {
+		t.Fatal("pi NonInteractive is nil")
+	}
+	if info.NonInteractive.PromptFlag != "-p" {
+		t.Errorf("pi NonInteractive.PromptFlag = %q, want -p", info.NonInteractive.PromptFlag)
+	}
+	if info.NonInteractive.OutputFlag != "--no-session" {
+		t.Errorf("pi NonInteractive.OutputFlag = %q, want --no-session", info.NonInteractive.OutputFlag)
+	}
+}
+
+// TestRuntimeConfigFromPreset_AgentPi tests RuntimeConfigFromPreset for AgentPi.
+func TestRuntimeConfigFromPreset_AgentPi(t *testing.T) {
+	t.Parallel()
+	rc := RuntimeConfigFromPreset(AgentPi)
+	if rc == nil {
+		t.Fatal("RuntimeConfigFromPreset(pi) returned nil")
+	}
+
+	// Check command
+	if rc.Command != "pi" {
+		t.Errorf("RuntimeConfig.Command = %q, want pi", rc.Command)
+	}
+
+	// Check Args
+	if len(rc.Args) != 0 {
+		t.Errorf("RuntimeConfig.Args = %v, want empty", rc.Args)
+	}
+
+	// Check Provider is set
+	if rc.Provider != "pi" {
+		t.Errorf("RuntimeConfig.Provider = %q, want pi", rc.Provider)
+	}
+}
+
+// TestGetAgentPresetByName_Pi tests GetAgentPresetByName for "pi".
+func TestGetAgentPresetByName_Pi(t *testing.T) {
+	t.Parallel()
+
+	info := GetAgentPresetByName("pi")
+	if info == nil {
+		t.Fatal("GetAgentPresetByName(pi) returned nil")
+	}
+
+	if info.Name != AgentPi {
+		t.Errorf("GetAgentPresetByName(pi).Name = %q, want AgentPi", info.Name)
+	}
+}
+
+// TestIsKnownPreset_Pi tests IsKnownPreset for "pi".
+func TestIsKnownPreset_Pi(t *testing.T) {
+	t.Parallel()
+
+	if !IsKnownPreset("pi") {
+		t.Error("IsKnownPreset(pi) = false, want true")
+	}
+}

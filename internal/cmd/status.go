@@ -1267,3 +1267,159 @@ func getAgentHook(b *beads.Beads, role, agentAddress, roleType string) AgentHook
 
 	return hook
 }
+
+// RuntimeInfo represents parsed runtime information from a process command line.
+type RuntimeInfo struct {
+	Provider string `json:"provider"` // e.g., "claude", "pi", "opencode"
+	Model    string `json:"model"`    // e.g., "opus", "claude-sonnet"
+}
+
+// parseRuntimeInfo parses a command line to extract runtime provider and model info.
+// It handles various command line patterns:
+//   - 'claude --model opus' → RuntimeInfo{Provider: "claude", Model: "opus"}
+//   - 'node /path/to/pi -e hooks.js' → RuntimeInfo{Provider: "pi", Model: ""}
+//   - 'pi --provider anthropic --model claude-sonnet' → RuntimeInfo{Provider: "pi", Model: "claude-sonnet"}
+//   - 'bun run opencode' → RuntimeInfo{Provider: "opencode", Model: ""}
+func parseRuntimeInfo(cmdline string) RuntimeInfo {
+	if cmdline == "" {
+		return RuntimeInfo{}
+	}
+
+	parts := strings.Fields(cmdline)
+	if len(parts) == 0 {
+		return RuntimeInfo{}
+	}
+
+	info := RuntimeInfo{}
+
+	// Check for wrapper patterns first (node/bun running an agent)
+	if isAgentCmdline(cmdline) {
+		// Extract the actual agent from the command line
+		for i, part := range parts {
+			// Check for pi being run via node/bun
+			if part == "pi" || strings.HasSuffix(part, "/pi") || strings.HasSuffix(part, "\\pi") {
+				info.Provider = "pi"
+				// Look for model in subsequent args
+				for j := i + 1; j < len(parts)-1; j++ {
+					if parts[j] == "--model" || parts[j] == "-m" {
+						info.Model = parts[j+1]
+						break
+					}
+				}
+				return info
+			}
+			// Check for opencode being run via node/bun
+			if part == "opencode" || strings.HasSuffix(part, "/opencode") || strings.HasSuffix(part, "\\opencode") {
+				info.Provider = "opencode"
+				// Look for model in subsequent args
+				for j := i + 1; j < len(parts)-1; j++ {
+					if parts[j] == "--model" || parts[j] == "-m" {
+						info.Model = parts[j+1]
+						break
+					}
+				}
+				return info
+			}
+		}
+	}
+
+	// Direct command patterns
+	base := filepath.Base(parts[0])
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+
+	switch base {
+	case "claude":
+		info.Provider = "claude"
+	case "pi":
+		info.Provider = "pi"
+	case "opencode":
+		info.Provider = "opencode"
+	case "gemini":
+		info.Provider = "gemini"
+	case "codex":
+		info.Provider = "codex"
+	case "cursor-agent":
+		info.Provider = "cursor"
+	case "auggie":
+		info.Provider = "auggie"
+	case "amp":
+		info.Provider = "amp"
+	}
+
+	// Extract model from --model flag
+	for i := 1; i < len(parts)-1; i++ {
+		if parts[i] == "--model" || parts[i] == "-m" {
+			info.Model = parts[i+1]
+			break
+		}
+	}
+
+	return info
+}
+
+// isAgentCmdline detects if a command line represents an agent wrapper invocation.
+// Returns true for patterns like:
+//   - 'node /path/to/pi -e hooks.js'
+//   - 'bun run opencode'
+//   - 'node /path/to/opencode/cli.js'
+func isAgentCmdline(cmdline string) bool {
+	if cmdline == "" {
+		return false
+	}
+
+	parts := strings.Fields(cmdline)
+	if len(parts) == 0 {
+		return false
+	}
+
+	base := filepath.Base(parts[0])
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+
+	// Check if running via node or bun
+	if base != "node" && base != "bun" {
+		return false
+	}
+
+	// Check if the command line contains pi or opencode
+	for _, part := range parts {
+		// Check for direct invocation
+		if part == "pi" || part == "opencode" {
+			return true
+		}
+		// Check for path-based invocation
+		if strings.Contains(part, "/pi") || strings.Contains(part, "\\pi") {
+			return true
+		}
+		if strings.Contains(part, "/opencode") || strings.Contains(part, "\\opencode") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// readPiDefaults reads the Pi agent settings from ~/.pi/agent/settings.json.
+// Returns a map of default settings, or an error if the file cannot be read.
+func readPiDefaults() (map[string]interface{}, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("getting home directory: %w", err)
+	}
+
+	settingsPath := filepath.Join(homeDir, ".pi", "agent", "settings.json")
+	data, err := os.ReadFile(settingsPath) //nolint:gosec // G304: path is constructed from home dir
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Return empty defaults if file doesn't exist
+			return make(map[string]interface{}), nil
+		}
+		return nil, fmt.Errorf("reading pi settings: %w", err)
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing pi settings: %w", err)
+	}
+
+	return settings, nil
+}
