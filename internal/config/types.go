@@ -525,6 +525,8 @@ func detectProviderFromCommand(command string) string {
 		return "auggie"
 	case "amp":
 		return "amp"
+	case "pi":
+		return "pi"
 	default:
 		return ""
 	}
