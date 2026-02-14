@@ -1,0 +1,48 @@
+{
+  "_doc": "Cost-optimized OpenCode setup for Gas Town",
+  "_doc2": "Place at: ~/gt/settings/config.json",
+  "_doc3": "Uses cheap/free models for background roles, capable models only where needed",
+
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "opencode",
+
+  "agents": {
+    "opencode-capable": {
+      "_note": "For roles that need strong reasoning: mayor, refinery, polecat",
+      "command": "opencode",
+      "args": ["-m", "anthropic/claude-sonnet-4-5-20250929"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-cheap": {
+      "_note": "For background/monitoring roles: deacon, witness",
+      "command": "opencode",
+      "args": ["-m", "anthropic/claude-haiku-4-5-20251001"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-free": {
+      "_note": "Free-tier model for experimentation (may have longer startup delays)",
+      "command": "opencode",
+      "args": ["-m", "opencode/minimax-m2.1-free"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    }
+  },
+
+  "role_agents": {
+    "mayor": "opencode-capable",
+    "refinery": "opencode-capable",
+    "polecat": "opencode-capable",
+    "crew": "opencode-capable",
+    "deacon": "opencode-cheap",
+    "witness": "opencode-cheap"
+  }
+}

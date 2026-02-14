@@ -1,0 +1,32 @@
+{
+  "_doc": "Rig-level settings that override town defaults for a specific rig",
+  "_doc2": "Place at: ~/gt/<rig>/settings/config.json",
+  "_doc3": "This example overrides polecats to use a different model while inheriting town defaults for other roles",
+
+  "type": "rig-settings",
+  "version": 1,
+
+  "agents": {
+    "opencode-kimi": {
+      "command": "opencode",
+      "args": ["-m", "kimi-for-coding/kimi-k2.5"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-grok": {
+      "command": "opencode",
+      "args": ["-m", "xai/grok-code-fast-1"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    }
+  },
+
+  "role_agents": {
+    "polecat": "opencode-kimi",
+    "witness": "opencode-grok"
+  }
+}

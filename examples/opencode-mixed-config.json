@@ -1,0 +1,37 @@
+{
+  "_doc": "Mixed Claude + OpenCode setup for Gas Town",
+  "_doc2": "Place at: ~/gt/settings/config.json",
+  "_doc3": "Uses Claude Code for critical roles (mayor, refinery) and OpenCode for workers",
+
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "claude",
+
+  "agents": {
+    "opencode-gpt5": {
+      "command": "opencode",
+      "args": ["-m", "openai/gpt-5.2-codex"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-fast": {
+      "command": "opencode",
+      "args": ["-m", "anthropic/claude-haiku-4-5-20251001"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    }
+  },
+
+  "role_agents": {
+    "mayor": "claude",
+    "refinery": "claude",
+    "deacon": "opencode-fast",
+    "witness": "opencode-fast",
+    "polecat": "opencode-gpt5",
+    "crew": "claude"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "_doc": "Minimal working Gas Town settings for OpenCode",
+  "_doc2": "Place at: ~/gt/settings/config.json",
+  "_doc3": "Uses the built-in 'opencode' preset for all roles - no custom agents needed",
+
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "opencode"
+}

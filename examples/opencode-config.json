@@ -1,0 +1,53 @@
+{
+  "_doc": "Town-level Gas Town settings for pure OpenCode setup",
+  "_doc2": "Place at: ~/gt/settings/config.json",
+  "_doc3": "All roles use OpenCode with per-role model assignments for cost optimization",
+
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "opencode",
+
+  "agents": {
+    "opencode-sonnet": {
+      "command": "opencode",
+      "args": ["-m", "anthropic/claude-sonnet-4-5-20250929"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-haiku": {
+      "command": "opencode",
+      "args": ["-m", "anthropic/claude-haiku-4-5-20251001"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-gpt5": {
+      "command": "opencode",
+      "args": ["-m", "openai/gpt-5.2-codex"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    },
+    "opencode-gemini": {
+      "command": "opencode",
+      "args": ["-m", "google/gemini-3-pro-high"],
+      "env": {
+        "OPENCODE_PERMISSION": "{\"*\":\"allow\"}"
+      },
+      "prompt_mode": "none"
+    }
+  },
+
+  "role_agents": {
+    "mayor": "opencode-sonnet",
+    "deacon": "opencode-haiku",
+    "witness": "opencode-haiku",
+    "refinery": "opencode-sonnet",
+    "polecat": "opencode-gpt5",
+    "crew": "opencode-sonnet"
+  }
+}
