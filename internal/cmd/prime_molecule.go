@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"github.com/steveyegge/gastown/internal/cli"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/steveyegge/gastown/internal/beads"
-	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/constants"
 	"github.com/steveyegge/gastown/internal/deacon"
 	"github.com/steveyegge/gastown/internal/style"
@@ -299,7 +297,6 @@ func outputRefineryPatrolContext(ctx RoleContext) {
 		HeaderEmoji:     "🔧",
 		HeaderTitle:     "Refinery Patrol Status",
 		CheckInProgress: true,
-		ExtraVars:       buildRefineryPatrolVars(ctx),
 		WorkLoopSteps: []string{
 			"Check inbox: `" + cli.Name() + " mail inbox`",
 			"Check next step: `bd ready`",
@@ -312,30 +309,3 @@ func outputRefineryPatrolContext(ctx RoleContext) {
 	outputPatrolContext(cfg)
 }
 
-// buildRefineryPatrolVars loads rig MQ settings and returns --var key=value
-// strings for the refinery patrol formula.
-func buildRefineryPatrolVars(ctx RoleContext) []string {
-	var vars []string
-	if ctx.TownRoot == "" || ctx.Rig == "" {
-		return vars
-	}
-	rigPath := filepath.Join(ctx.TownRoot, ctx.Rig)
-	settingsPath := filepath.Join(rigPath, "settings", "config.json")
-	settings, err := config.LoadRigSettings(settingsPath)
-	if err != nil || settings == nil || settings.MergeQueue == nil {
-		return vars
-	}
-	mq := settings.MergeQueue
-
-	vars = append(vars, fmt.Sprintf("integration_branch_refinery_enabled=%t", mq.IsRefineryIntegrationEnabled()))
-	vars = append(vars, fmt.Sprintf("integration_branch_auto_land=%t", mq.IsIntegrationBranchAutoLandEnabled()))
-	vars = append(vars, fmt.Sprintf("run_tests=%t", mq.RunTests))
-	if mq.TestCommand != "" {
-		vars = append(vars, fmt.Sprintf("test_command=%s", mq.TestCommand))
-	}
-	if mq.TargetBranch != "" {
-		vars = append(vars, fmt.Sprintf("target_branch=%s", mq.TargetBranch))
-	}
-	vars = append(vars, fmt.Sprintf("delete_merged_branches=%t", mq.DeleteMergedBranches))
-	return vars
-}
