@@ -511,12 +511,22 @@ func runSling(cmd *cobra.Command, args []string) error {
 		targetPane = pane
 	}
 
+	// Detect cross-rig sling: bead prefix belongs to a different rig than the target.
+	// When cross-rig, include full bead content in the nudge since the polecat
+	// can't resolve the bead from its local (different-rig) beads store (st-btod).
+	var crossRigInfo *beadInfo
+	if isCrossRigSling(beadID, targetAgent, townRoot) {
+		crossRigInfo = info
+		fmt.Printf("%s Cross-rig sling detected — will include full task content in nudge\n", style.Dim.Render("○"))
+	}
+
 	// Try to inject the "start now" prompt (graceful if no tmux)
-	// Skip for freshly spawned polecats - SessionManager.Start() already sent StartupNudge.
 	// Skip for self-sling - agent is currently processing the sling command and will see
 	// the hooked work on next turn. Nudging would inject text while agent is busy.
-	if freshlySpawned {
-		// Fresh polecat already got StartupNudge from SessionManager.Start()
+	// For fresh polecats in cross-rig: send additional nudge with full bead content
+	// since SessionManager's StartupNudge only includes the bead ID (unresolvable cross-rig).
+	if freshlySpawned && crossRigInfo == nil {
+		// Fresh same-rig polecat already got StartupNudge from SessionManager.Start()
 	} else if isSelfSling {
 		// Self-sling: agent already knows about the work (just slung it)
 		fmt.Printf("%s Self-sling: work hooked, will process on next turn\n", style.Dim.Render("○"))
@@ -533,16 +543,39 @@ func runSling(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if err := injectStartPrompt(targetPane, beadID, slingSubject, slingArgs); err != nil {
+		if err := injectStartPrompt(targetPane, beadID, slingSubject, slingArgs, crossRigInfo); err != nil {
 			// Graceful fallback for no-tmux mode
 			fmt.Printf("%s Could not nudge (no tmux?): %v\n", style.Dim.Render("○"), err)
 			fmt.Printf("  Agent will discover work via gt prime / bd show\n")
 		} else {
-			fmt.Printf("%s Start prompt sent\n", style.Bold.Render("▶"))
+			if crossRigInfo != nil {
+				fmt.Printf("%s Cross-rig start prompt sent (includes full task content)\n", style.Bold.Render("▶"))
+			} else {
+				fmt.Printf("%s Start prompt sent\n", style.Bold.Render("▶"))
+			}
 		}
 	}
 
 	return nil
+}
+
+// isCrossRigSling returns true if the bead belongs to a different rig than the
+// target agent. Used to decide whether to enrich the nudge with full bead content,
+// since the polecat's local beads store can't resolve cross-rig bead IDs (st-btod).
+func isCrossRigSling(beadID, targetAgent, townRoot string) bool {
+	beadPrefix := beads.ExtractPrefix(beadID)
+	if beadPrefix == "" {
+		return false
+	}
+	beadRig := beads.GetRigNameForPrefix(townRoot, beadPrefix)
+	if beadRig == "" {
+		return false // Town-level or unknown prefix
+	}
+	targetRig := strings.SplitN(targetAgent, "/", 2)[0]
+	if targetRig == "" {
+		return false
+	}
+	return targetRig != beadRig
 }
 
 // checkCrossRigGuard validates that a bead's prefix matches the target rig.

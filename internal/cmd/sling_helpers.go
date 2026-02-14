@@ -68,9 +68,12 @@ func resolveBeadDirFromRigsJSON(townRoot, prefix string) string {
 
 // beadInfo holds status and assignee for a bead.
 type beadInfo struct {
-	Title    string `json:"title"`
-	Status   string `json:"status"`
-	Assignee string `json:"assignee"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	Assignee    string `json:"assignee"`
+	IssueType   string `json:"issue_type"`
+	Priority    int    `json:"priority"`
 }
 
 // verifyBeadExists checks that the bead exists using bd show.
@@ -196,7 +199,9 @@ func storeFieldsInBead(beadID string, updates beadFieldUpdates) error {
 
 // injectStartPrompt sends a prompt to the target pane to start working.
 // Uses the reliable nudge pattern: literal mode + 500ms debounce + separate Enter.
-func injectStartPrompt(pane, beadID, subject, args string) error {
+// When crossRigInfo is non-nil, includes full bead content so the polecat
+// doesn't need to resolve the cross-rig bead from its local store.
+func injectStartPrompt(pane, beadID, subject, args string, crossRigInfo *beadInfo) error {
 	if pane == "" {
 		return fmt.Errorf("no target pane")
 	}
@@ -208,7 +213,11 @@ func injectStartPrompt(pane, beadID, subject, args string) error {
 
 	// Build the prompt to inject
 	var prompt string
-	if args != "" {
+	if crossRigInfo != nil {
+		// Cross-rig sling: include full bead content since the polecat
+		// can't resolve this bead from its local beads store.
+		prompt = buildCrossRigPrompt(beadID, crossRigInfo, args)
+	} else if args != "" {
 		// Args provided - include them prominently in the prompt
 		if subject != "" {
 			prompt = fmt.Sprintf("Work slung: %s (%s). Args: %s. Start working now - use these args to guide your execution.", beadID, subject, args)
@@ -224,6 +233,34 @@ func injectStartPrompt(pane, beadID, subject, args string) error {
 	// Use the reliable nudge pattern (same as gt nudge / tmux.NudgeSession)
 	t := tmux.NewTmux()
 	return t.NudgePane(pane, prompt)
+}
+
+// buildCrossRigPrompt constructs a rich nudge message for cross-rig slings.
+// Includes the full task specification so the polecat can work without
+// resolving the bead from its local (different-rig) beads store.
+func buildCrossRigPrompt(beadID string, info *beadInfo, args string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("CROSS-RIG WORK: %s", beadID))
+	if info.Title != "" {
+		b.WriteString(fmt.Sprintf(" — %s", info.Title))
+	}
+	b.WriteString("\n")
+	if info.IssueType != "" {
+		b.WriteString(fmt.Sprintf("Type: %s | Priority: P%d\n", info.IssueType, info.Priority))
+	}
+	if info.Description != "" {
+		// Truncate very long descriptions to avoid tmux paste issues
+		desc := info.Description
+		if len(desc) > 2000 {
+			desc = desc[:2000] + "\n[...truncated]"
+		}
+		b.WriteString(fmt.Sprintf("Description:\n%s\n", desc))
+	}
+	if args != "" {
+		b.WriteString(fmt.Sprintf("Args: %s\n", args))
+	}
+	b.WriteString("NOTE: This bead is from a different rig. You cannot resolve it via `bd show` or `gt hook`. Use the task info above. When done, run `gt done` as normal.")
+	return b.String()
 }
 
 // getSessionFromPane extracts session name from a pane target.
