@@ -103,6 +103,22 @@ func (m *SessionManager) Start(dogName string, opts SessionStartOptions) error {
 	}
 	instructions := fmt.Sprintf("I am Dog %s.%s Check mail for work: `"+cli.Name()+" mail inbox`. Execute assigned formula/bead. When done, send DOG_DONE mail to deacon/ and return to idle.", dogName, workInfo)
 
+	// Get dog's worktrees to determine rigPath for agent config resolution.
+	// Dogs need a valid rigPath to resolve role-specific agent configuration.
+	// Worktree paths are like: <townRoot>/deacon/dogs/<dog>/<rig>
+	// We need rigPath: <townRoot>/<rig>
+	var rigPath, rigName string
+	if m.mgr != nil {
+		if dog, err := m.mgr.Get(dogName); err == nil && len(dog.Worktrees) > 0 {
+			// Use the first worktree's rig for agent config resolution
+			for name := range dog.Worktrees {
+				rigName = name
+				rigPath = filepath.Join(m.townRoot, rigName)
+				break
+			}
+		}
+	}
+
 	// Use unified session lifecycle.
 	theme := tmux.DogTheme()
 	_, err = session.StartSession(m.tmux, session.SessionConfig{
@@ -110,6 +126,8 @@ func (m *SessionManager) Start(dogName string, opts SessionStartOptions) error {
 		WorkDir:   kennelDir,
 		Role:      "dog",
 		TownRoot:  m.townRoot,
+		RigPath:   rigPath,
+		RigName:   rigName,
 		AgentName: dogName,
 		Beacon: session.BeaconConfig{
 			Recipient: fmt.Sprintf("deacon/dogs/%s", dogName),
