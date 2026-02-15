@@ -5,11 +5,53 @@ When slung to a rig, the polecat verifies that it received correct Gas Town
 context injection, has work on its hook, can use Gas Town CLI tools, and can
 execute a test task.
 
+## Prerequisites (Mayor / Overseer)
+
+Before slinging this formula, configure the target agent:
+
+**1. Set the polecat agent in town settings** (`~/gt/settings/config.json`):
+```json
+{
+    "role_agents": {
+        "polecat": "pi"
+    }
+}
+```
+
+Or override at rig level (`~/gt/<rig>/settings/config.json`):
+```json
+{
+    "role_agents": {
+        "polecat": "pi"
+    }
+}
+```
+
+See `docs/examples/town-settings.example.json` and `docs/examples/rig-settings.example.json`
+for full configuration examples.
+
+**2. Ensure agent authentication is configured:**
+- **Claude**: `ANTHROPIC_API_KEY` or Claude Max subscription (auto-detected)
+- **Pi**: Antigravity credentials at `~/.pi/agent/auth.json`
+  - Setup: `pi auth` or see https://github.com/badlogic/pi-mono#authentication
+- **OpenCode**: Provider-specific API keys in environment
+
+**3. Verify the agent binary is installed:**
+```bash
+which pi       # Should resolve to ~/.bun/bin/pi
+which claude   # Should resolve to ~/.local/bin/claude
+```
+
 ## Usage
 
 ```bash
+# Set agent, then sling
+# In ~/gt/settings/config.json: "role_agents": {"polecat": "pi"}
 gt sling agent-validation sfgastown
-gt sling agent-validation pi_agent
+
+# Or for Claude (default):
+# "role_agents": {"polecat": "opus-46"}
+gt sling agent-validation sfgastown
 ```
 
 ## What it does
