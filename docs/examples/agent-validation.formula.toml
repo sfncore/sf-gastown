@@ -57,8 +57,14 @@ bd close <stale-id> --reason "stale bead from previous polecat session"
 
 **5. Sling and run the mayor-side validation protocol:**
 
+`gt sling` "cooks" the formula: it reads the [[steps]] below, creates a parent
+epic bead (the formula itself) with one child wisp per step, wires up the
+dependency chain from the `needs` fields, hooks the epic to a fresh polecat,
+and nudges it to start. The polecat then autonomously works through the wisps
+in dependency order.
+
 ```bash
-# 1. Sling the formula
+# 1. Sling the formula (this cooks it into an epic + child wisps automatically)
 gt sling agent-validation sfgastown
 # Note the polecat name from the output (e.g., "obsidian")
 
